@@ -155,6 +155,7 @@ __device__ inline float box_overlap(const float *box_a, const float *box_b){
     Point cross_points[16];
     Point poly_center;
     int cnt = 0, flag = 0;
+    int contain_cnt = 0;
 
     poly_center.set(0, 0);
     for (int i = 0; i < 4; i++){
@@ -179,6 +180,7 @@ __device__ inline float box_overlap(const float *box_a, const float *box_b){
             poly_center = poly_center + box_b_corners[k];
             cross_points[cnt] = box_b_corners[k];
             cnt++;
+            contain_cnt++;
 #ifdef DEBUG
                 printf("b corners in a: corner_b(%.3f, %.3f)", cross_points[cnt - 1].x, cross_points[cnt - 1].y);
 #endif
@@ -186,6 +188,7 @@ __device__ inline float box_overlap(const float *box_a, const float *box_b){
         if (check_in_box2d(box_b, box_a_corners[k])){
             poly_center = poly_center + box_a_corners[k];
             cross_points[cnt] = box_a_corners[k];
+            contain_cnt++;
             cnt++;
 #ifdef DEBUG
                 printf("a corners in b: corner_a(%.3f, %.3f)", cross_points[cnt - 1].x, cross_points[cnt - 1].y);
@@ -220,6 +223,8 @@ __device__ inline float box_overlap(const float *box_a, const float *box_b){
     for (int k = 0; k < cnt - 1; k++){
         area += cross(cross_points[k] - cross_points[0], cross_points[k + 1] - cross_points[0]);
     }
+    if (4 == contain_cnt)
+        return (box_b[3] * box_b[4] + box_a[3] * box_a[4]);
 
     return fabs(area) / 2.0;
 }
@@ -230,6 +235,8 @@ __device__ inline float iou_bev(const float *box_a, const float *box_b){
     float sa = box_a[3] * box_a[4];
     float sb = box_b[3] * box_b[4];
     float s_overlap = box_overlap(box_a, box_b);
+    if (s_overlap / sa > 0.95 || s_overlap / sb > 0.95)
+        s_overlap = sa + sb;
     return s_overlap / fmaxf(sa + sb - s_overlap, EPS);
 }
 
