@@ -6,6 +6,7 @@ import torch.optim.lr_scheduler as lr_sched
 
 from .fastai_optim import OptimWrapper
 from .learning_schedules_fastai import CosineWarmupLR, OneCycle
+import pdb
 
 
 def build_optimizer(model, optim_cfg):
@@ -38,10 +39,10 @@ def build_optimizer(model, optim_cfg):
 
 def build_scheduler(optimizer, total_iters_each_epoch, total_epochs, last_epoch, optim_cfg):
     decay_steps = [x * total_iters_each_epoch for x in optim_cfg.DECAY_STEP_LIST]
-    def lr_lbmd(cur_epoch):
+    def lr_lbmd(cur_step):
         cur_decay = 1
         for decay_step in decay_steps:
-            if cur_epoch >= decay_step:
+            if cur_step >= decay_step:
                 cur_decay = cur_decay * optim_cfg.LR_DECAY
         return max(cur_decay, optim_cfg.LR_CLIP / optim_cfg.LR)
 

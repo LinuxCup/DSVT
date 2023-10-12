@@ -6,7 +6,6 @@ from .point_head_simple import PointHeadSimple
 from .point_intra_part_head import PointIntraPartOffsetHead
 from .center_head import CenterHead
 from .sparse_anchor_free_head import SparseAnchorFreeHead
-from .transfusion_head import TransFusionHead
 
 __all__ = {
     'AnchorHeadTemplate': AnchorHeadTemplate,
@@ -16,6 +15,5 @@ __all__ = {
     'PointHeadBox': PointHeadBox,
     'AnchorHeadMulti': AnchorHeadMulti,
     'CenterHead': CenterHead, 
-    'SparseAnchorFreeHead': SparseAnchorFreeHead,
-    'TransFusionHead': TransFusionHead
+    'SparseAnchorFreeHead': SparseAnchorFreeHead
 }

@@ -90,7 +90,6 @@ MODEL:
     reduction_type: 'attention'
     output_shape: [468, 468]
     conv_out_channel: 192
-    # ues_checkpoint: True
 
   MAP_TO_BEV:
     NAME: PointPillarScatter3d

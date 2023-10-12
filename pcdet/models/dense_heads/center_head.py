@@ -7,7 +7,7 @@ from ..model_utils import model_nms_utils
 from ..model_utils import centernet_utils
 from ...utils import loss_utils
 from functools import partial
-
+import pdb
 
 class SeparateHead(nn.Module):
     def __init__(self, input_channels, sep_head_dict, init_bias=-2.19, use_bias=False, norm_func=None):
@@ -136,6 +136,7 @@ class CenterHead(nn.Module):
         inds = gt_boxes.new_zeros(num_max_objs).long()
         mask = gt_boxes.new_zeros(num_max_objs).long()
         ret_boxes_src = gt_boxes.new_zeros(num_max_objs, gt_boxes.shape[-1])
+        # pdb.set_trace()
         ret_boxes_src[:gt_boxes.shape[0]] = gt_boxes
 
         x, y, z = gt_boxes[:, 0], gt_boxes[:, 1], gt_boxes[:, 2]
@@ -206,6 +207,7 @@ class CenterHead(nn.Module):
             heatmap_list, target_boxes_list, inds_list, masks_list, target_boxes_src_list = [], [], [], [], []
             for bs_idx in range(batch_size):
                 cur_gt_boxes = gt_boxes[bs_idx]
+                # pdb.set_trace()
                 gt_class_names = all_names[cur_gt_boxes[:, -1].cpu().long().numpy()]
 
                 gt_boxes_single_head = []
@@ -288,6 +290,7 @@ class CenterHead(nn.Module):
                         mask=target_dicts['masks'][idx],
                         ind=target_dicts['inds'][idx], gt_boxes=target_dicts['target_boxes_src'][idx]
                     )
+                    # pdb.set_trace()
                     loss += iou_loss
                     tb_dict['iou_loss_head_%d' % idx] = iou_loss.item()
 
@@ -297,6 +300,7 @@ class CenterHead(nn.Module):
                         mask=target_dicts['masks'][idx],
                         ind=target_dicts['inds'][idx], gt_boxes=target_dicts['target_boxes_src'][idx]
                     )
+                    # pdb.set_trace()
                     if target_dicts['masks'][idx].sum().item() != 0:
                         iou_reg_loss = iou_reg_loss * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['loc_weight']
                         loss += iou_reg_loss
@@ -307,7 +311,7 @@ class CenterHead(nn.Module):
 
 
 
-        tb_dict['rpn_loss'] = loss.item()
+        # tb_dict['rpn_loss'] = loss.item()
         return loss, tb_dict
 
     def generate_predicted_boxes(self, batch_size, pred_dicts):
@@ -357,6 +361,7 @@ class CenterHead(nn.Module):
                     )
 
                 elif post_process_cfg.NMS_CONFIG.NMS_TYPE == 'multi_class_nms':
+                    # pdb.set_trace()
                     selected, selected_scores = model_nms_utils.multi_classes_nms_mmdet(
                         box_scores=final_dict['pred_scores'], box_preds=final_dict['pred_boxes'],
                         box_labels=final_dict['pred_labels'], nms_config=post_process_cfg.NMS_CONFIG,

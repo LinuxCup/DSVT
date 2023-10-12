@@ -14,7 +14,7 @@ try:
 except:
     # Make sure the torch version is latest enough to support mixed precision training
     pass
-
+import pdb
 
 
 def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, accumulated_iter, optim_cfg,
@@ -27,6 +27,7 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
     ckpt_save_cnt = 1
     start_it = accumulated_iter % total_it_each_epoch
 
+    # pdb.set_trace()
     if rank == 0:
         pbar = tqdm.tqdm(total=total_it_each_epoch, leave=leave_pbar, desc='train', dynamic_ncols=True)
         data_time = common_utils.AverageMeter()
@@ -38,6 +39,12 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
         loc_loss_disp = common_utils.AverageMeter()
         rcnn_cls_loss_disp = common_utils.AverageMeter()
         rcnn_reg_loss_disp = common_utils.AverageMeter()
+        iou_loss_head_tb = common_utils.AverageMeter()
+        iou_reg_loss_tb = common_utils.AverageMeter()
+        learning_rate_tb = common_utils.AverageMeter()
+        loss_tb = common_utils.AverageMeter()
+        hm_loss_tb = common_utils.AverageMeter()
+        loc_loss_tb = common_utils.AverageMeter()
 
 
     amp_ctx = contextlib.nullcontext()
@@ -104,11 +111,14 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
             forward_time.update(avg_forward_time)
             batch_time.update(avg_batch_time)
             loss_disp.update(loss.item())
+            loss_tb.update(loss.item())
             
             # for centerhead
             if 'hm_loss_head_0' in list(tb_dict.keys()) and 'loc_loss_head_0' in list(tb_dict.keys()):
                 hm_loss_disp.update(tb_dict['hm_loss_head_0'])
                 loc_loss_disp.update(tb_dict['loc_loss_head_0'])
+                hm_loss_tb.update(tb_dict['hm_loss_head_0'])
+                loc_loss_tb.update(tb_dict['loc_loss_head_0'])
                 disp_dict.update({
                 'loss_hm': f'{hm_loss_disp.avg:.4f}', 'loss_loc': f'{loc_loss_disp.avg:.4f}'})
             if 'rcnn_loss_reg' in list(tb_dict.keys()) and 'rcnn_loss_cls' in list(tb_dict.keys()):
@@ -121,6 +131,10 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
                 'f_time': f'{forward_time.val:.2f}({forward_time.avg:.2f})', 'b_time': f'{batch_time.val:.2f}({batch_time.avg:.2f})',
                 'norm': total_norm.item()
             })
+
+            iou_loss_head_tb.update(tb_dict['iou_loss_head_0'])
+            iou_reg_loss_tb.update(tb_dict['iou_reg_loss_head_0'])
+            learning_rate_tb.update(cur_lr)
 
             if use_logger_to_record:
                 if (accumulated_iter % logger_iter_interval == 0 and cur_it != start_it) or cur_it + 1 == total_it_each_epoch:
@@ -170,6 +184,17 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
                 logger.info(f'Save latest model to {ckpt_name}')
                 ckpt_save_cnt += 1
 
+        # if (cur_it % 50 == 0):
+        #     break
+
+    if rank == 0:
+        tb_log.add_scalar('train/avg_loss', loss_tb.avg, cur_epoch)
+        tb_log.add_scalar('train/avg_hm_loss', hm_loss_tb.avg, cur_epoch)
+        tb_log.add_scalar('train/avg_loc_loss', loc_loss_tb.avg, cur_epoch)
+        tb_log.add_scalar('train/avg_iou_loss_head', iou_loss_head_tb.avg, cur_epoch)
+        tb_log.add_scalar('train/avg_iou_reg_loss', iou_reg_loss_tb.avg, cur_epoch)
+        tb_log.add_scalar('meta_data/avg_learning_rate', learning_rate_tb.avg, cur_epoch)
+    
     if rank == 0:
         pbar.close()
     return accumulated_iter
@@ -183,8 +208,9 @@ def train_model(model, optimizer, train_loader, model_func, lr_scheduler, optim_
     accumulated_iter = start_iter
 
     augment_disable_flag = False
+    # pdb.set_trace()
     with tqdm.trange(start_epoch, total_epochs, desc='epochs', dynamic_ncols=True, leave=(rank == 0)) as tbar:
-        total_it_each_epoch = len(train_loader)
+        total_it_each_epoch = len(train_loader) #158081 for waymo datasets
         if merge_all_iters_to_one_epoch:
             assert hasattr(train_loader.dataset, 'merge_all_iters_to_one_epoch')
             train_loader.dataset.merge_all_iters_to_one_epoch(merge=True, epochs=total_epochs)
@@ -221,6 +247,7 @@ def train_model(model, optimizer, train_loader, model_func, lr_scheduler, optim_
                         augment_disable_flag = True
 
 
+            # pdb.set_trace()
             accumulated_iter = train_one_epoch(
                 model, optimizer, train_loader, model_func,
                 lr_scheduler=cur_scheduler,

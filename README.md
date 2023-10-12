@@ -1,3 +1,5 @@
+# 分支feature/train：本分支为本远程服务器训练代码
+
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/dsvt-dynamic-sparse-voxel-transformer-with/3d-object-detection-on-waymo-vehicle)](https://paperswithcode.com/sota/3d-object-detection-on-waymo-vehicle?p=dsvt-dynamic-sparse-voxel-transformer-with)
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/dsvt-dynamic-sparse-voxel-transformer-with/3d-object-detection-on-waymo-pedestrian)](https://paperswithcode.com/sota/3d-object-detection-on-waymo-pedestrian?p=dsvt-dynamic-sparse-voxel-transformer-with)
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/dsvt-dynamic-sparse-voxel-transformer-with/3d-object-detection-on-waymo-cyclist)](https://paperswithcode.com/sota/3d-object-detection-on-waymo-cyclist?p=dsvt-dynamic-sparse-voxel-transformer-with)

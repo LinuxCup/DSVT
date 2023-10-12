@@ -16,6 +16,8 @@ from pcdet.models import build_network, model_fn_decorator
 from pcdet.utils import common_utils
 from train_utils.optimization import build_optimizer, build_scheduler
 from train_utils.train_utils import train_model
+import pdb
+# os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 
 def parse_config():
@@ -24,7 +26,7 @@ def parse_config():
 
     parser.add_argument('--batch_size', type=int, default=None, required=False, help='batch size for training')
     parser.add_argument('--epochs', type=int, default=None, required=False, help='number of epochs to train for')
-    parser.add_argument('--workers', type=int, default=4, help='number of workers for dataloader')
+    parser.add_argument('--workers', type=int, default=1, help='number of workers for dataloader')
     parser.add_argument('--extra_tag', type=str, default='default', help='extra tag for this experiment')
     parser.add_argument('--ckpt', type=str, default=None, help='checkpoint to start from')
     parser.add_argument('--pretrained_model', type=str, default=None, help='pretrained_model')
@@ -32,7 +34,7 @@ def parse_config():
     parser.add_argument('--tcp_port', type=int, default=18888, help='tcp port for distrbuted training')
     parser.add_argument('--sync_bn', action='store_true', default=False, help='whether to use sync bn')
     parser.add_argument('--fix_random_seed', action='store_true', default=False, help='')
-    parser.add_argument('--ckpt_save_interval', type=int, default=1, help='number of training epochs')
+    parser.add_argument('--ckpt_save_interval', type=int, default=5, help='number of training epochs')
     parser.add_argument('--local_rank', type=int, default=0, help='local rank for distributed training')
     parser.add_argument('--max_ckpt_save_num', type=int, default=30, help='max number of saved checkpoint')
     parser.add_argument('--merge_all_iters_to_one_epoch', action='store_true', default=False, help='')
@@ -46,7 +48,7 @@ def parse_config():
     
     parser.add_argument('--use_tqdm_to_record', action='store_true', default=False, help='if True, the intermediate losses will not be logged to file, only tqdm will be used')
     parser.add_argument('--logger_iter_interval', type=int, default=50, help='')
-    parser.add_argument('--ckpt_save_time_interval', type=int, default=300, help='in terms of seconds')
+    parser.add_argument('--ckpt_save_time_interval', type=int, default=1000, help='in terms of seconds')
     parser.add_argument('--wo_gpu_stat', action='store_true', help='')
     
 
@@ -110,6 +112,7 @@ def main():
     tb_log = SummaryWriter(log_dir=str(output_dir / 'tensorboard')) if cfg.LOCAL_RANK == 0 else None
 
     # -----------------------create dataloader & network & optimizer---------------------------
+    # pdb.set_trace()
     train_set, train_loader, train_sampler = build_dataloader(
         dataset_cfg=cfg.DATA_CONFIG,
         class_names=cfg.CLASS_NAMES,
@@ -121,6 +124,7 @@ def main():
         total_epochs=args.epochs,
         seed=666 if args.fix_random_seed else None
     )
+    # pdb.set_trace()
 
     model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=train_set)
     if args.sync_bn:
@@ -135,6 +139,7 @@ def main():
     if args.pretrained_model is not None:
         model.load_params_from_file(filename=args.pretrained_model, to_cpu=dist_train, logger=logger)
 
+    # pdb.set_trace()
     if args.ckpt is not None:
         it, start_epoch = model.load_params_with_optimizer(args.ckpt, to_cpu=dist_train, optimizer=optimizer, logger=logger)
         last_epoch = start_epoch + 1
@@ -153,6 +158,7 @@ def main():
                 except:
                     ckpt_list = ckpt_list[:-1]
 
+    # pdb.set_trace()
     model.train()  # before wrap to DistributedDataParallel to support fixed some parameters
     if dist_train:
         model = nn.parallel.DistributedDataParallel(model, device_ids=[cfg.LOCAL_RANK % torch.cuda.device_count()])
@@ -169,6 +175,7 @@ def main():
     logger.info('**********************Start training %s/%s(%s)**********************'
                 % (cfg.EXP_GROUP_PATH, cfg.TAG, args.extra_tag))
 
+    # pdb.set_trace()
     train_model(
         model,
         optimizer,
@@ -195,6 +202,7 @@ def main():
         fp16=args.fp16,
         cfg=cfg
     )
+    # pdb.set_trace()
 
     if hasattr(train_set, 'use_shared_memory') and train_set.use_shared_memory:
         train_set.clean_shared_memory()

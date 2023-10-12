@@ -7,7 +7,7 @@ data/
 venv/
 *.idea/
 *.so
-*.yaml
+# *.yaml
 *.sh
 *.pth
 *.pkl
@@ -15,3 +15,6 @@ venv/
 *.bin
 output
 version.py
+build/
+output/
+results/

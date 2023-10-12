@@ -12,7 +12,7 @@ DATA_CONFIG:
         DB_INFO_PATH:
           - waymo_processed_data_v0_5_0_waymo_dbinfos_train_sampled_1.pkl
 
-        USE_SHARED_MEMORY: True  # set it to True to speed up (it costs about 15GB shared memory)
+        USE_SHARED_MEMORY: False  # set it to True to speed up (it costs about 15GB shared memory)
         DB_DATA_PATH:
           - waymo_processed_data_v0_5_0_gt_database_train_sampled_1_global.npy
 
@@ -67,14 +67,14 @@ MODEL:
     WITH_DISTANCE: False
     USE_ABSLOTE_XYZ: True
     USE_NORM: True
-    NUM_FILTERS: [ 192, 192 ]
+    NUM_FILTERS: [ 128, 128 ]
 
   BACKBONE_3D:
     NAME: DSVT
     INPUT_LAYER:
       sparse_shape: [468, 468, 1]
       downsample_stride: []
-      d_model: [192]
+      d_model: [128]
       set_info: [[36, 4]]
       window_shape: [[12, 12, 1]]
       hybrid_factor: [2, 2, 1] # x, y, z
@@ -83,19 +83,18 @@ MODEL:
 
     block_name: ['DSVTBlock']
     set_info: [[36, 4]]
-    d_model: [192]
+    d_model: [128]
     nhead: [8]
     dim_feedforward: [384]
     dropout: 0.0
     activation: gelu
     output_shape: [468, 468]
-    conv_out_channel: 192
-    # ues_checkpoint: True
+    conv_out_channel: 128
 
   MAP_TO_BEV:
     NAME: PointPillarScatter3d
     INPUT_SHAPE: [468, 468, 1]
-    NUM_BEV_FEATURES: 192
+    NUM_BEV_FEATURES: 128
 
   BACKBONE_2D:
     NAME: BaseBEVResBackbone
@@ -166,11 +165,11 @@ MODEL:
 
 
 OPTIMIZATION:
-  BATCH_SIZE_PER_GPU: 3
+  BATCH_SIZE_PER_GPU: 1
   NUM_EPOCHS: 24
 
   OPTIMIZER: adam_onecycle
-  LR: 0.003 #
+  LR: 0.001 #
   WEIGHT_DECAY: 0.05
   MOMENTUM: 0.9
 
