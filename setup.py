@@ -133,5 +133,16 @@ if __name__ == '__main__':
                     'src/ingroup_inds_kernel.cu',
                 ]
             ),
+            make_cuda_ext(
+                name='voxel_cuda',
+                module='pcdet.ops.voxel',
+                sources=[
+                    'src/scatter_points_cpu.cpp',
+                    'src/scatter_points_cuda.cu',
+                    'src/voxelization.cpp',
+                    'src/voxelization_cpu.cpp',
+                    'src/voxelization_cuda.cu',
+                ]
+            ),
         ],
     )

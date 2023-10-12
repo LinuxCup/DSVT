@@ -15,3 +15,6 @@ venv/
 *.bin
 output
 version.py
+results/
+tools/logs/
+tools/npy_file/

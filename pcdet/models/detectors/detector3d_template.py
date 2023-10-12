@@ -9,6 +9,8 @@ from .. import backbones_2d, backbones_3d, dense_heads, roi_heads
 from ..backbones_2d import map_to_bev
 from ..backbones_3d import pfe, vfe
 from ..model_utils import model_nms_utils
+from .. import combine
+import pdb
 
 
 class Detector3DTemplate(nn.Module):
@@ -24,6 +26,11 @@ class Detector3DTemplate(nn.Module):
             'vfe', 'backbone_3d', 'map_to_bev_module', 'pfe',
             'backbone_2d', 'dense_head',  'point_head', 'roi_head'
         ]
+
+        # self.module_topology = [
+        #     'vfe', 'backbone_3d', 'combine3modules', 'map_to_bev_module', 'pfe',
+        #     'backbone_2d', 'dense_head',  'point_head', 'roi_head'
+        # ]
 
     @property
     def mode(self):
@@ -42,6 +49,7 @@ class Detector3DTemplate(nn.Module):
             'voxel_size': self.dataset.voxel_size,
             'depth_downsample_factor': self.dataset.depth_downsample_factor
         }
+        # pdb.set_trace()
         for module_name in self.module_topology:
             module, model_info_dict = getattr(self, 'build_%s' % module_name)(
                 model_info_dict=model_info_dict
@@ -81,6 +89,15 @@ class Detector3DTemplate(nn.Module):
         model_info_dict['backbone_channels'] = backbone_3d_module.backbone_channels \
             if hasattr(backbone_3d_module, 'backbone_channels') else None
         return backbone_3d_module, model_info_dict
+
+    def build_combine3modules(self, model_info_dict):
+        # pdb.set_trace()
+        combine3modules_ins = combine.__all__[self.model_cfg.COMBINE3MODULES.NAME](
+            model_cfg=self.model_cfg.BACKBONE_3D,
+        )
+
+        model_info_dict['module_list'].append(combine3modules_ins)
+        return combine3modules_ins, model_info_dict
 
     def build_map_to_bev_module(self, model_info_dict):
         if self.model_cfg.get('MAP_TO_BEV', None) is None:

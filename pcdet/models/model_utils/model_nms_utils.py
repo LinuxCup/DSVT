@@ -3,6 +3,8 @@ import numpy as np
 
 from ...ops.iou3d_nms import iou3d_nms_utils
 from ...ops.ioubev_nms import ioubev_nms_utils
+import pdb
+
 
 
 def class_agnostic_nms(box_scores, box_preds, nms_config, score_thresh=None):
@@ -14,12 +16,12 @@ def class_agnostic_nms(box_scores, box_preds, nms_config, score_thresh=None):
 
     selected = []
     if box_scores.shape[0] > 0:
-        box_scores_nms, indices = torch.topk(box_scores, k=min(nms_config.NMS_PRE_MAXSIZE, box_scores.shape[0]))
+        box_scores_nms, indices = torch.topk(box_scores, k=min(nms_config.NMS_PRE_MAXSIZE[0], box_scores.shape[0]))
         boxes_for_nms = box_preds[indices]
         keep_idx, selected_scores = getattr(iou3d_nms_utils, nms_config.NMS_TYPE)(
-                boxes_for_nms[:, 0:7], box_scores_nms, nms_config.NMS_THRESH, **nms_config
+                boxes_for_nms[:, 0:7], box_scores_nms, nms_config.NMS_THRESH[0], **nms_config
         )
-        selected = indices[keep_idx[:nms_config.NMS_POST_MAXSIZE]]
+        selected = indices[keep_idx[:nms_config.NMS_POST_MAXSIZE[0]]]
 
     if score_thresh is not None:
         original_idxs = scores_mask.nonzero().view(-1)
@@ -137,6 +139,7 @@ def multi_classes_nms_mmdet(box_scores, box_preds, box_labels, nms_config, score
         curr_idx = torch.nonzero(curr_mask)[:, 0]
         curr_box_scores = box_scores[curr_mask]
         cur_box_preds = box_preds[curr_mask]
+        # pdb.set_trace()
 
         curr_box_preds_bev = cur_box_preds[:, [0,1,3,4,6]]
         # xywhr2xyxyr
@@ -165,6 +168,13 @@ def multi_classes_nms_mmdet(box_scores, box_preds, box_labels, nms_config, score
             """
             curr_boxes_bev_for_nms[:, 4] = (-curr_boxes_bev_for_nms[:, 4] + np.pi / 2 * 1)
             curr_boxes_bev_for_nms[:, 4] = (curr_boxes_bev_for_nms[:, 4] + np.pi) % (2*np.pi) - np.pi
+
+
+            # keep_idx, selected_scores = getattr(iou3d_nms_utils, nms_config.NMS_TYPE)(
+            #         boxes_for_nms[:, 0:7], box_scores_nms, nms_config.NMS_THRESH[0], **nms_config
+            # )
+            # selected = indices[keep_idx[:nms_config.NMS_POST_MAXSIZE[0]]]
+
 
 
             keep_idx = getattr(ioubev_nms_utils, 'nms_gpu_bev')(

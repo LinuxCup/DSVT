@@ -67,35 +67,39 @@ MODEL:
     WITH_DISTANCE: False
     USE_ABSLOTE_XYZ: True
     USE_NORM: True
-    NUM_FILTERS: [ 192, 192 ]
+    NUM_FILTERS: [ 128, 128 ]
 
   BACKBONE_3D:
     NAME: DSVT_TrtEngine
     INPUT_LAYER:
       sparse_shape: [468, 468, 1]
       downsample_stride: []
-      d_model: [192]
+      d_model: [128]
       set_info: [[36, 4]]
       window_shape: [[12, 12, 1]]
       hybrid_factor: [2, 2, 1] # x, y, z
       shifts_list: [[[0, 0, 0], [6, 6, 0]]]
       normalize_pos: False
 
-    trt_engine: path to trt_engine
+    trt_engine: '/home/zhenghu/DeepLearning/DSVT/tools/dsvt_blocks_waymo.engine'
+    pos_trt_engine: '/home/zhenghu/DeepLearning/DSVT/tools/pos_enbendding_waymo.engine'
     block_name: ['DSVTBlock']
     set_info: [[36, 4]]
-    d_model: [192]
+    d_model: [128]
     nhead: [8]
     dim_feedforward: [384]
     dropout: 0.0
     activation: gelu
     output_shape: [468, 468]
-    conv_out_channel: 192
+    conv_out_channel: 128
+
+  COMBINE3MODULES:
+    NAME: Combine3Modules
 
   MAP_TO_BEV:
     NAME: PointPillarScatter3d
     INPUT_SHAPE: [468, 468, 1]
-    NUM_BEV_FEATURES: 192
+    NUM_BEV_FEATURES: 128
 
   BACKBONE_2D:
     NAME: BaseBEVResBackbone
@@ -145,7 +149,7 @@ MODEL:
       }
 
     POST_PROCESSING:
-      SCORE_THRESH: 0.1
+      SCORE_THRESH: 0.5
       POST_CENTER_LIMIT_RANGE: [-80, -80, -10.0, 80, 80, 10.0]
       MAX_OBJ_PER_SAMPLE: 500
 
@@ -155,7 +159,8 @@ MODEL:
 
       NMS_CONFIG:
         NMS_TYPE: multi_class_nms  # only for centerhead， use mmdet3d version nms
-        NMS_THRESH: [0.7, 0.6, 0.55]
+        # NMS_THRESH: [0.7, 0.6, 0.55]
+        NMS_THRESH: [0.1, 0.1, 0.1]
         NMS_PRE_MAXSIZE: [4096, 4096, 4096]
         NMS_POST_MAXSIZE: [500, 500, 500]
 
@@ -170,7 +175,7 @@ OPTIMIZATION:
   NUM_EPOCHS: 24
 
   OPTIMIZER: adam_onecycle
-  LR: 0.003 #
+  LR: 0.001 #
   WEIGHT_DECAY: 0.05
   MOMENTUM: 0.9
 

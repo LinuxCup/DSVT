@@ -7,6 +7,7 @@ from ..model_utils import model_nms_utils
 from ..model_utils import centernet_utils
 from ...utils import loss_utils
 from functools import partial
+import pdb
 
 
 class SeparateHead(nn.Module):
@@ -330,6 +331,7 @@ class CenterHead(nn.Module):
 
             batch_iou = (pred_dict['iou'] + 1) * 0.5 if 'iou' in pred_dict else None
 
+            # pdb.set_trace()
             final_pred_dicts = centernet_utils.decode_bbox_from_heatmap(
                 heatmap=batch_hm, rot_cos=batch_rot_cos, rot_sin=batch_rot_sin,
                 center=batch_center, center_z=batch_center_z, dim=batch_dim, vel=batch_vel, iou=batch_iou,
@@ -340,10 +342,12 @@ class CenterHead(nn.Module):
                 score_thresh=post_process_cfg.SCORE_THRESH,
                 post_center_limit_range=post_center_limit_range
             )
+            # pdb.set_trace()
 
             for k, final_dict in enumerate(final_pred_dicts):
                 final_dict['pred_labels'] = self.class_id_mapping_each_head[idx][final_dict['pred_labels'].long()]
 
+                # pdb.set_trace()
                 if post_process_cfg.get('USE_IOU_TO_RECTIFY_SCORE', False) and 'pred_iou' in final_dict:
                     pred_iou = torch.clamp(final_dict['pred_iou'], min=0, max=1.0)
                     IOU_RECTIFIER = final_dict['pred_scores'].new_tensor(post_process_cfg.IOU_RECTIFIER)
@@ -357,6 +361,7 @@ class CenterHead(nn.Module):
                     )
 
                 elif post_process_cfg.NMS_CONFIG.NMS_TYPE == 'multi_class_nms':
+                    # pdb.set_trace()
                     selected, selected_scores = model_nms_utils.multi_classes_nms_mmdet(
                         box_scores=final_dict['pred_scores'], box_preds=final_dict['pred_boxes'],
                         box_labels=final_dict['pred_labels'], nms_config=post_process_cfg.NMS_CONFIG,
@@ -399,10 +404,28 @@ class CenterHead(nn.Module):
     def forward(self, data_dict):
         spatial_features_2d = data_dict['spatial_features_2d']
         x = self.shared_conv(spatial_features_2d)
+        # pdb.set_trace()
 
         pred_dicts = []
         for head in self.heads_list:
             pred_dicts.append(head(x))
+
+
+        # pdb.set_trace()
+# (Pdb) pred_dicts[0].keys()
+# dict_keys(['center', 'center_z', 'dim', 'rot', 'iou', 'hm'])
+# (Pdb) pred_dicts[0]['center'].shape
+# torch.Size([1, 2, 468, 468])
+# (Pdb) pred_dicts[0]['center_z'].shape
+# torch.Size([1, 1, 468, 468])
+# (Pdb) pred_dicts[0]['dim'].shape
+# torch.Size([1, 3, 468, 468])
+# (Pdb) pred_dicts[0]['rot'].shape
+# torch.Size([1, 2, 468, 468])
+# (Pdb) pred_dicts[0]['iou'].shape
+# torch.Size([1, 1, 468, 468])
+# (Pdb) pred_dicts[0]['hm'].shape
+# torch.Size([1, 3, 468, 468])
 
         if self.training:
             target_dict = self.assign_targets(

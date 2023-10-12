@@ -3,6 +3,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch import Tensor
+import pdb
+import time
 
 
 class BasicBlock(nn.Module):
@@ -117,27 +119,44 @@ class BaseBEVResBackbone(nn.Module):
 
         self.num_bev_features = c_in
 
-    def forward(self, data_dict):
+    def forward(self, spatial_features):
+    # def forward(self, data_dict):
         """
         Args:
             data_dict:
                 spatial_features
         Returns:
         """
-        spatial_features = data_dict['spatial_features']
+        
+        # spatial_features = data_dict['spatial_features']
         ups = []
         ret_dict = {}
         x = spatial_features
-        for i in range(len(self.blocks)):
-            x = self.blocks[i](x)
+        temp = [1,2,4]
 
-            stride = int(spatial_features.shape[2] / x.shape[2])
+        for i in range(len(self.blocks)):
+            torch.cuda.synchronize()
+            t0 = time.time()
+            x = self.blocks[i](x)
+            torch.cuda.synchronize()
+            t1 = time.time()
+            # print('___________:', t1- t0)
+
+            # stride = int(spatial_features.shape[2] / x.shape[2])
+            stride = temp[i]
             ret_dict['spatial_features_%dx' % stride] = x
             if len(self.deblocks) > 0:
+                torch.cuda.synchronize()
+                t0 = time.time()
                 ups.append(self.deblocks[i](x))
+                torch.cuda.synchronize()
+                t1 = time.time()
+                # print('_________________:', t1- t0)
             else:
                 ups.append(x)
 
+
+        # pdb.set_trace()
         if len(ups) > 1:
             x = torch.cat(ups, dim=1)
         elif len(ups) == 1:
@@ -146,6 +165,7 @@ class BaseBEVResBackbone(nn.Module):
         if len(self.deblocks) > len(self.blocks):
             x = self.deblocks[-1](x)
 
+        return x
         data_dict['spatial_features_2d'] = x
 
         return data_dict

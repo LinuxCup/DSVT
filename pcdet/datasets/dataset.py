@@ -8,6 +8,7 @@ from ..utils import common_utils
 from .augmentor.data_augmentor import DataAugmentor
 from .processor.data_processor import DataProcessor
 from .processor.point_feature_encoder import PointFeatureEncoder
+import pdb
 
 
 class DatasetTemplate(torch_data.Dataset):
@@ -177,6 +178,7 @@ class DatasetTemplate(torch_data.Dataset):
                 data_dict['gt_boxes2d'] = data_dict['gt_boxes2d'][selected]
 
         if data_dict.get('points', None) is not None:
+            # pdb.set_trace()
             data_dict = self.point_feature_encoder.forward(data_dict)
 
         data_dict = self.data_processor.forward(

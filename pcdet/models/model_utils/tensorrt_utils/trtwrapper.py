@@ -3,6 +3,8 @@ from typing import Any, Dict, Optional, Sequence, Union
 
 import tensorrt as trt
 import torch
+import pdb
+import time
 
 from .utils import load_trt_engine, torch_device_from_trt, torch_dtype_from_trt
 
@@ -102,7 +104,10 @@ class TRTWrapper(torch.nn.Module):
             outputs[output_name] = output
             bindings[idx] = output.data_ptr()
 
+        t0 = time.time()
         self.__trt_execute(bindings=bindings)
+        t1 = time.time()
+        # print('t1 - t0:   ', t1-t0)
 
         return outputs
 

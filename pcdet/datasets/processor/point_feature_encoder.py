@@ -1,4 +1,5 @@
 import numpy as np
+import pdb
 
 
 class PointFeatureEncoder(object):
@@ -30,6 +31,7 @@ class PointFeatureEncoder(object):
             data_dict['points']
         )
         data_dict['use_lead_xyz'] = use_lead_xyz
+        # pdb.set_trace()
        
         if self.point_encoding_config.get('filter_sweeps', False) and 'timestamp' in self.src_feature_list:
             max_sweeps = self.point_encoding_config.max_sweeps
@@ -38,6 +40,7 @@ class PointFeatureEncoder(object):
             max_dt = sorted(np.unique(dt))[min(len(np.unique(dt))-1, max_sweeps-1)]
             data_dict['points'] = data_dict['points'][dt <= max_dt]
         
+        # pdb.set_trace()
         return data_dict
 
     def absolute_coordinates_encoding(self, points=None):
@@ -45,7 +48,8 @@ class PointFeatureEncoder(object):
             num_output_features = len(self.used_feature_list)
             return num_output_features
 
-        assert points.shape[-1] == len(self.src_feature_list)
+        # pdb.set_trace()
+        # assert points.shape[-1] == len(self.src_feature_list)
         point_feature_list = [points[:, 0:3]]
         for x in self.used_feature_list:
             if x in ['x', 'y', 'z']:
@@ -53,5 +57,6 @@ class PointFeatureEncoder(object):
             idx = self.src_feature_list.index(x)
             point_feature_list.append(points[:, idx:idx+1])
         point_features = np.concatenate(point_feature_list, axis=1)
+        # pdb.set_trace()
         
         return point_features, True

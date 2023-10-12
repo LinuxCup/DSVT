@@ -12,6 +12,7 @@ from .waymo.waymo_dataset import WaymoDataset
 from .pandaset.pandaset_dataset import PandasetDataset
 from .lyft.lyft_dataset import LyftDataset
 from .custom.custom_dataset import CustomDataset
+from .zhito.zhito_dataset import ZhitoDataset
 
 __all__ = {
     'DatasetTemplate': DatasetTemplate,
@@ -20,7 +21,8 @@ __all__ = {
     'WaymoDataset': WaymoDataset,
     'PandasetDataset': PandasetDataset,
     'LyftDataset': LyftDataset,
-    'CustomDataset': CustomDataset
+    'CustomDataset': CustomDataset,
+    'ZhitoDataset': ZhitoDataset,
 }
 
 

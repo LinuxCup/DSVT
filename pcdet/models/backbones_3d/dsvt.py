@@ -1,10 +1,12 @@
 import torch
 import torch.nn as nn
-from torch.utils.checkpoint import checkpoint
 
 from .dsvt_input_layer import DSVTInputLayer
 from ..model_utils.tensorrt_utils.trtwrapper import TRTWrapper
-
+import pdb
+import time
+import numpy as np
+# from pcdet.ops.myunique.muunique_op import myunique_
 
 class DSVT(nn.Module):
     '''Dynamic Sparse Voxel Transformer Backbone.
@@ -38,8 +40,6 @@ class DSVT(nn.Module):
         dropout = self.model_cfg.dropout
         activation = self.model_cfg.activation
         self.reduction_type = self.model_cfg.get('reduction_type', 'attention')
-        # save GPU memory
-        self.use_torch_ckpt = self.model_cfg.get('ues_checkpoint', False)
  
         # Sparse Regional Attention Blocks
         stage_num = len(block_name)
@@ -85,6 +85,7 @@ class DSVT(nn.Module):
         self._reset_parameters()
 
     def forward(self, batch_dict):
+    # def forward(self, i_voxel_features, i_voxel_coords): # torch.Size([20254, 128])   torch.Size([20254, 4])
         '''
         Args:
             bacth_dict (dict): 
@@ -102,7 +103,47 @@ class DSVT(nn.Module):
                 - voxel_coords (Tensor[int]):
                 - ...
         '''
+        # pdb.set_trace()
+        torch.cuda.synchronize()
+        t0 = time.time()
         voxel_info = self.input_layer(batch_dict)
+        # self.input_layer(batch_dict['voxel_features'], batch_dict['i_voxel_coords'])
+        # voxel_info = self.input_layer(i_voxel_features, i_voxel_coords)
+
+        # voxel_feats_stage0, \
+        # voxel_coors_stage0,\
+        # batch_win_inds_stage0_shift0, \
+        # coors_in_win_stage0_shift0, \
+        # batch_win_inds_stage0_shift1, \
+        # coors_in_win_stage0_shift1, \
+        # set_voxel_inds_stage0_shift0, \
+        # set_voxel_mask_stage0_shift0, \
+        # set_voxel_inds_stage0_shift1, \
+        # set_voxel_mask_stage0_shift1, \
+        # pos_embed_stage0_block0_shift0, \
+        # pos_embed_stage0_block0_shift1, \
+        # pos_embed_stage0_block1_shift0, \
+        # pos_embed_stage0_block1_shift1, \
+        # pos_embed_stage0_block2_shift0, \
+        # pos_embed_stage0_block2_shift1, \
+        # pos_embed_stage0_block3_shift0, \
+        # pos_embed_stage0_block3_shift1 = self.input_layer(i_voxel_features, i_voxel_coords)
+        # voxel_feat = voxel_feats_stage0
+        # set_voxel_inds_list = [[set_voxel_inds_stage0_shift0, set_voxel_inds_stage0_shift1]]
+        # set_voxel_masks_list = [[set_voxel_mask_stage0_shift0, set_voxel_mask_stage0_shift1]]
+        # pos_embed_list = [[[pos_embed_stage0_block0_shift0, pos_embed_stage0_block0_shift1]], 
+        #                   [[pos_embed_stage0_block1_shift0, pos_embed_stage0_block1_shift1]], 
+        #                   [[pos_embed_stage0_block2_shift0, pos_embed_stage0_block2_shift1]], 
+        #                   [[pos_embed_stage0_block3_shift0, pos_embed_stage0_block3_shift1]]]
+        # pooling_mapping_index = []
+        # pooling_index_in_pool = []
+        # pooling_preholder_feats = []
+
+
+        # # pdb.set_trace()
+        torch.cuda.synchronize()
+        # t1 = time.time()
+        # pdb.set_trace()
 
         voxel_feat = voxel_info['voxel_feats_stage0']
         set_voxel_inds_list = [[voxel_info[f'set_voxel_inds_stage{s}_shift{i}'] for i in range(self.num_shifts[s])] for s in range(self.stage_num)]
@@ -112,23 +153,30 @@ class DSVT(nn.Module):
         pooling_index_in_pool = [voxel_info[f'pooling_index_in_pool_stage{s+1}'] for s in range(self.stage_num-1)]
         pooling_preholder_feats = [voxel_info[f'pooling_preholder_feats_stage{s+1}'] for s in range(self.stage_num-1)]
 
+        # voxel_feat  [20553, 128]
+        # set_voxel_inds_list [[2, 963, 36],[2, 691, 36]]
+        # set_voxel_masks_list [[2, 963, 36],[2, 691, 36]]
+
         output = voxel_feat
         block_id = 0
+        # pdb.set_trace()
+        torch.cuda.synchronize()
+        t2 = time.time()
         for stage_id in range(self.stage_num):
             block_layers = self.__getattr__(f'stage_{stage_id}')
             residual_norm_layers = self.__getattr__(f'residual_norm_stage_{stage_id}')
+            # pdb.set_trace()
             for i in range(len(block_layers)):
                 block = block_layers[i]
                 residual = output.clone()
-                if self.use_torch_ckpt==False:
-                    output = block(output, set_voxel_inds_list[stage_id], set_voxel_masks_list[stage_id], pos_embed_list[stage_id][i], \
-                                block_id=block_id)
-                else:
-                    output = checkpoint(block, output, set_voxel_inds_list[stage_id], set_voxel_masks_list[stage_id], pos_embed_list[stage_id][i], block_id)
+                # pdb.set_trace()
+                output = block(output, set_voxel_inds_list[stage_id], set_voxel_masks_list[stage_id], pos_embed_list[stage_id][i], \
+                               block_id=block_id)
                 output = residual_norm_layers[i](output + residual)
                 block_id += 1
-            if stage_id < self.stage_num - 1:
+            if stage_id < self.stage_num - 1: # not execute
                 # pooling
+                print("________________exec here")
                 prepool_features = pooling_preholder_feats[stage_id].type_as(output)
                 pooled_voxel_num = prepool_features.shape[0]
                 pool_volume = prepool_features.shape[1]
@@ -147,8 +195,14 @@ class DSVT(nn.Module):
                 else:
                     raise NotImplementedError
 
+        # return output
         batch_dict['pillar_features'] = batch_dict['voxel_features'] = output
         batch_dict['voxel_coords'] = voxel_info[f'voxel_coors_stage{self.stage_num - 1}']
+        torch.cuda.synchronize()
+        t3 = time.time()
+        # print('t1 - t0: ', t1-t0)
+        # print('t2 - t1: ', t2-t1)
+        # print('t3 - t2: ', t3-t2)
         return batch_dict
 
     def _reset_parameters(self):
@@ -163,6 +217,7 @@ class DSVTBlock(nn.Module):
     def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1,
                  activation="relu", batch_first=True):
         super().__init__()
+        # pdb.set_trace()
 
         encoder_1 = DSVT_EncoderLayer(d_model, nhead, dim_feedforward, dropout,
                                         activation, batch_first)
@@ -172,26 +227,42 @@ class DSVTBlock(nn.Module):
 
     def forward(
             self,
-            src,
-            set_voxel_inds_list,
-            set_voxel_masks_list,
-            pos_embed_list,
+            src, # torch.Size([20254, 128])
+            set_voxel_inds_list, # [torch.Size([2, 962, 36]), torch.Size([2, 962, 36])]
+            set_voxel_masks_list, # [torch.Size([2, 962, 36]), torch.Size([2, 962, 36])]
+            pos_embed_list, # [torch.Size([20254, 128]), torch.Size([20254, 128])]
             block_id,
     ):
+        # pdb.set_trace()
         num_shifts = 2
         output = src
-        # TODO: bug to be fixed, mismatch of pos_embed
         for i in range(num_shifts):
             set_id = i
             shift_id = block_id % 2
             pos_embed_id = i
-            set_voxel_inds = set_voxel_inds_list[shift_id][set_id]
+            set_voxel_inds = set_voxel_inds_list[shift_id][set_id] # set_id for sort align x axis or align y
             set_voxel_masks = set_voxel_masks_list[shift_id][set_id]
             pos_embed = pos_embed_list[pos_embed_id]
             layer = self.encoder_list[i]
+            # pdb.set_trace()
+            # torch.Size([20254, 128])
+            # torch.Size([962, 36])
+            # torch.Size([962, 36])
+            # torch.Size([20254, 128])
             output = layer(output, set_voxel_inds, set_voxel_masks, pos_embed)
+            # output: torch.Size([20553, 128])
+            # pdb.set_trace()
 
         return output
+
+
+        # shift_id = block_id % 2
+        # set_voxel_inds0 = set_voxel_inds_list[shift_id][0]
+        # set_voxel_masks0 = set_voxel_masks_list[shift_id][0]
+        # pos_embed0 = pos_embed_list[0]
+        # layer0 = self.encoder_list[0]
+        # output0 = layer0(output, set_voxel_inds0, set_voxel_masks0, pos_embed0)
+        # return output0
 
 
 class DSVT_EncoderLayer(nn.Module):
@@ -204,12 +275,14 @@ class DSVT_EncoderLayer(nn.Module):
         self.d_model = d_model
 
     def forward(self,src,set_voxel_inds,set_voxel_masks,pos=None,onnx_export=False):
-        identity = src
-        src = self.win_attn(src, pos, set_voxel_masks, set_voxel_inds, onnx_export)
-        src = src + identity
-        src = self.norm(src)
+        # pdb.set_trace()
+        output = src
+        identity = output
+        output = self.win_attn(output, pos, set_voxel_masks, set_voxel_inds, onnx_export)
+        output = output + identity
+        output = self.norm(output)
 
-        return src
+        return output
 
 class SetAttention(nn.Module):
 
@@ -240,11 +313,12 @@ class SetAttention(nn.Module):
             pos (Tensor[float]): Position embedding vectors with shape (N, C).
             key_padding_mask (Tensor[bool]): Mask for redundant voxels within set. Shape of (set_num, set_size).
             voxel_inds (Tensor[int]): Voxel indexs for each set. Shape of (set_num, set_size).
-            onnx_export (bool): Substitute torch.unique op, which is not supported by tensorrt.
         Returns:
             src (Tensor[float]): Voxel features.
         '''
-        set_features = src[voxel_inds]
+        # pdb.set_trace()
+        output = src
+        set_features = output[voxel_inds]
         if pos is not None:
             set_pos = pos[voxel_inds]
         else:
@@ -255,14 +329,38 @@ class SetAttention(nn.Module):
             value = set_features
 
         if key_padding_mask is not None:
-            src2 = self.self_attn(query, key, value, key_padding_mask)[0]
+            # Q: torch.Size([962, 36, 128])
+            # K: torch.Size([962, 36, 128])
+            # V: torch.Size([962, 36, 128])
+            # key_padding_mask: torch.Size([962, 36])
+            # pdb.set_trace()
+            # np.save('query.npy', query.detach().cpu().numpy())
+            # np.save('key.npy', key.detach().cpu().numpy())
+            # np.save('value.npy', value.detach().cpu().numpy())
+            # np.save('key_padding_mask.npy', key_padding_mask.detach().cpu().numpy())
+            # (Pdb) query.shape
+            # torch.Size([1156, 36, 128])
+            # (Pdb) key.shape
+            # torch.Size([1156, 36, 128])
+            # (Pdb) value.shape
+            # torch.Size([1156, 36, 128])
+            # (Pdb) key_padding_mask.shape
+            # torch.Size([1156, 36])
+            # (Pdb) src2.shape
+            # torch.Size([1156, 36, 128])
+            # (Pdb) temp1.shape
+            # torch.Size([1156, 36, 36])
+
+
+            src2, _ = self.self_attn(query, key, value, key_padding_mask)
         else:
             src2 = self.self_attn(query, key, value)[0]
 
         # map voxel featurs from set space to voxel space: (set_num, set_size, C) --> (N, C)
         flatten_inds = voxel_inds.reshape(-1)
+
         if onnx_export:
-            src2_placeholder = torch.zeros_like(src).to(src2.dtype)
+            src2_placeholder = torch.zeros_like(output).to(src2.dtype)
             src2_placeholder[flatten_inds] = src2.reshape(-1, self.d_model)
             src2 = src2_placeholder
         else:
@@ -273,13 +371,13 @@ class SetAttention(nn.Module):
             src2 = src2.reshape(-1, self.d_model)[perm]
 
         # FFN layer
-        src = src + self.dropout1(src2)
-        src = self.norm1(src)
-        src2 = self.linear2(self.dropout(self.activation(self.linear1(src))))
-        src = src + self.dropout2(src2)
-        src = self.norm2(src)
+        output = output + self.dropout1(src2)
+        output = self.norm1(output)
+        src2 = self.linear2(self.dropout(self.activation(self.linear1(output))))
+        output = output + self.dropout2(src2)
+        output = self.norm2(output)
 
-        return src
+        return output
 
 
 class Stage_Reduction_Block(nn.Module):
@@ -359,7 +457,13 @@ class DSVT_TrtEngine(nn.Module):
         ]
         output_names = ["output",]
         trt_path = self.model_cfg.trt_engine
+        # pdb.set_trace()
         self.allptransblockstrt = TRTWrapper(trt_path, input_names, output_names)
+
+        input_names = ["coors_in_win_shift0", "coors_in_win_shift1"]
+        output_names = ["output",]
+        self.pos_enbendding = TRTWrapper(self.model_cfg.pos_trt_engine, input_names, output_names)
+        # pdb.set_trace()
         
         self.num_shifts = [2] * stage_num
         self.output_shape = self.model_cfg.output_shape
@@ -369,6 +473,13 @@ class DSVT_TrtEngine(nn.Module):
 
 
     def forward(self, batch_dict):
+        # pdb.set_trace()
+        # global_index_in_set_data_shift0 = torch.from_numpy(np.load('npy_file/dsvt_input_layer/global_index_in_set_data_shift0.npy').reshape(2, -1, 36)).cuda()
+        # global_index_in_set_data_shift1 = torch.from_numpy(np.load('npy_file/dsvt_input_layer/global_index_in_set_data_shift1.npy').reshape(2, -1, 36)).cuda()
+        # set_voxel_mask_data_shift0 = torch.from_numpy(np.load('npy_file/dsvt_input_layer/set_voxel_mask_data_shift0.npy').reshape(2, -1, 36)).cuda()
+        # set_voxel_mask_data_shift1 = torch.from_numpy(np.load('npy_file/dsvt_input_layer/set_voxel_mask_data_shift1.npy').reshape(2, -1, 36)).cuda()
+        # pillars_coors_in_win_shift0 = torch.from_numpy(np.load('npy_file/dsvt_input_layer/pillars_coors_in_win_shift0.npy').reshape(-1, 3)).cuda()
+        # pillars_coors_in_win_shift1 = torch.from_numpy(np.load('npy_file/dsvt_input_layer/pillars_coors_in_win_shift1.npy').reshape(-1, 3)).cuda()
 
         voxel_info = self.input_layer(batch_dict)
 
@@ -379,19 +490,51 @@ class DSVT_TrtEngine(nn.Module):
         pooling_mapping_index = [voxel_info[f'pooling_mapping_index_stage{s+1}'] for s in range(self.stage_num-1)]
         pooling_index_in_pool = [voxel_info[f'pooling_index_in_pool_stage{s+1}'] for s in range(self.stage_num-1)]
         pooling_preholder_feats = [voxel_info[f'pooling_preholder_feats_stage{s+1}'] for s in range(self.stage_num-1)]
+        
+
+        # inputs_dict = dict(coors_in_win_shift0 = pillars_coors_in_win_shift0, coors_in_win_shift1 = pillars_coors_in_win_shift1)
+        # pos_embed_list = self.pos_enbendding(inputs_dict)["output"]
+        # # np.save('./npy_file/dsvt_input_layer/pos_embedding.npy', pos_embed_list.detach().cpu().numpy())
+        # # pdb.set_trace()
+        # set_voxel_inds_list = [[global_index_in_set_data_shift0, global_index_in_set_data_shift1]]
+        # set_voxel_masks_list = [[set_voxel_mask_data_shift0, set_voxel_mask_data_shift1]]
 
         output = voxel_feat
         inputs_dict = dict(
-                src=output,
+                src=batch_dict['voxel_features'],
                 set_voxel_inds_tensor_shift_0=set_voxel_inds_list[0][0].int(),
                 set_voxel_inds_tensor_shift_1=set_voxel_inds_list[0][1].int(),
                 set_voxel_masks_tensor_shift_0=set_voxel_masks_list[0][0],
                 set_voxel_masks_tensor_shift_1=set_voxel_masks_list[0][1],
                 pos_embed_tensor=torch.stack([torch.stack(v, dim=0) for v in pos_embed_list[0]], dim=0),
+                # pos_embed_tensor = pos_embed_list,
             )
+
+        inputs_dict_np = {
+            'src':output.detach().cpu().numpy(),
+            'set_voxel_inds_tensor_shift_0':set_voxel_inds_list[0][0].int().detach().cpu().numpy(),
+            'set_voxel_inds_tensor_shift_1':set_voxel_inds_list[0][1].int().detach().cpu().numpy(),
+            'set_voxel_masks_tensor_shift_0':set_voxel_masks_list[0][0].detach().cpu().numpy(),
+            'set_voxel_masks_tensor_shift_1':set_voxel_masks_list[0][1].detach().cpu().numpy(),
+            'pos_embed_tensor':torch.stack([torch.stack(v, dim=0) for v in pos_embed_list[0]], dim=0).detach().cpu().numpy(),
+            # 'pos_embed_tensor':pos_embed_list,
+        }
+
         output = self.allptransblockstrt(inputs_dict)["output"]
+        # np.save('./npy_file/src.npy', inputs_dict_np['src'])
+        # np.save('./npy_file/set_voxel_inds_tensor_shift_0.npy', inputs_dict_np['set_voxel_inds_tensor_shift_0'])
+        # np.save('./npy_file/set_voxel_inds_tensor_shift_1.npy', inputs_dict_np['set_voxel_inds_tensor_shift_1'])
+        # np.save('./npy_file/set_voxel_masks_tensor_shift_0.npy', inputs_dict_np['set_voxel_masks_tensor_shift_0'])
+        # np.save('./npy_file/set_voxel_masks_tensor_shift_1.npy', inputs_dict_np['set_voxel_masks_tensor_shift_1'])
+        # np.save('./npy_file/pos_embed_tensor.npy', inputs_dict_np['pos_embed_tensor'])
+        # pdb.set_trace()
+        # output = torch.from_numpy(np.load('/home/zhenghu/DeepLearning/DSVT/tools/npy_file/dsvt_output_layer/dsvt_output_tensor.npy').reshape(-1, 128)).cuda()
 
         batch_dict['pillar_features'] = batch_dict['voxel_features'] = output
+        # pdb.set_trace()
+        # import numpy as np
+        # np.save('./npy_file/voxel_features.npy', batch_dict['voxel_features'].detach().cpu().numpy())
+        # np.save('./npy_file/voxel_coords.npy', batch_dict['voxel_coords'].int().detach().cpu().numpy())
         return batch_dict
 
     def _reset_parameters(self):

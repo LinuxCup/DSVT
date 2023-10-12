@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import numba
+import pdb
 
 
 def gaussian_radius(height, width, min_overlap=0.5):
@@ -136,6 +137,7 @@ def _transpose_and_gather_feat(feat, ind):
 def _topk(scores, K=40):
     batch, num_class, height, width = scores.size()
 
+    # pdb.set_trace()
     topk_scores, topk_inds = torch.topk(scores.flatten(2, 3), K)
 
     topk_inds = topk_inds % (height * width)
@@ -150,6 +152,18 @@ def _topk(scores, K=40):
 
     return topk_score, topk_inds, topk_classes, topk_ys, topk_xs
 
+import matplotlib.pyplot as plt
+def visualization_feature(feature):
+    grid_sz_z = feature.shape[0]
+    row_vis = 3
+    fig, (axes) = plt.subplots((int)(grid_sz_z/row_vis + 1),row_vis)
+    for i,t in enumerate(axes):
+        for j,ax in enumerate(t):
+            if (i*row_vis + j) >= grid_sz_z:
+                continue
+            im = ax.imshow(feature[i*row_vis+j])
+            fig.colorbar(im, ax=ax)
+    plt.show()
 
 def decode_bbox_from_heatmap(heatmap, rot_cos, rot_sin, center, center_z, dim,
                              point_cloud_range=None, voxel_size=None, feature_map_stride=None, vel=None, iou=None, K=100,
@@ -167,6 +181,11 @@ def decode_bbox_from_heatmap(heatmap, rot_cos, rot_sin, center, center_z, dim,
     rot_cos = _transpose_and_gather_feat(rot_cos, inds).view(batch_size, K, 1)
     center_z = _transpose_and_gather_feat(center_z, inds).view(batch_size, K, 1)
     dim = _transpose_and_gather_feat(dim, inds).view(batch_size, K, 3)
+    # pdb.set_trace()
+    # visualization_feature(heatmap.squeeze(dim=0).cpu().numpy())
+    # hm = torch.from_numpy(np.load('npy_file/head_output_layer/hm.npy').reshape(1, 6, 468, 468))
+    # visualization_feature(hm.squeeze(dim=0))
+
 
     angle = torch.atan2(rot_sin, rot_cos)
     xs = xs.view(batch_size, K, 1) + center[:, :, 0:1]

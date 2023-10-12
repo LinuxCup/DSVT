@@ -11,11 +11,14 @@ class PointPillarScatter3d(nn.Module):
         self.num_bev_features = self.model_cfg.NUM_BEV_FEATURES
         self.num_bev_features_before_compression = self.model_cfg.NUM_BEV_FEATURES // self.nz
 
-    def forward(self, batch_dict, **kwargs):
-        pillar_features, coords = batch_dict['pillar_features'], batch_dict['voxel_coords']
+    def forward(self, pillar_features, coords, **kwargs):
+    # def forward(self, batch_dict, **kwargs):
+        # pillar_features, coords = batch_dict['pillar_features'], batch_dict['voxel_coords']
         
         batch_spatial_features = []
-        batch_size = coords[:, 0].max().int().item() + 1
+        # import pdb
+        # pdb.set_trace()
+        batch_size = 1
         for batch_idx in range(batch_size):
             spatial_feature = torch.zeros(
                 self.num_bev_features_before_compression,
@@ -34,5 +37,11 @@ class PointPillarScatter3d(nn.Module):
 
         batch_spatial_features = torch.stack(batch_spatial_features, 0)
         batch_spatial_features = batch_spatial_features.view(batch_size, self.num_bev_features_before_compression * self.nz, self.ny, self.nx)
+        # import pdb
+        # pdb.set_trace()
+        # import numpy as np
+        # np.save('./npy_file/batch_spatial_features.npy', batch_spatial_features.detach().cpu().numpy())
+        # torch.Size([1, 128, 468, 468])
+        return batch_spatial_features
         batch_dict['spatial_features'] = batch_spatial_features
         return batch_dict
