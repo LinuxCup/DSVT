@@ -45,6 +45,18 @@ class SeparateHead(nn.Module):
 
         return ret_dict
 
+import matplotlib.pyplot as plt
+def visualization_feature(feature):
+    grid_sz_z = feature.shape[0]
+    row_vis = 3
+    fig, (axes) = plt.subplots((int)(grid_sz_z/row_vis + 1),row_vis)
+    for i,t in enumerate(axes):
+        for j,ax in enumerate(t):
+            if (i*row_vis + j) >= grid_sz_z:
+                continue
+            im = ax.imshow(feature[i*row_vis+j])
+            fig.colorbar(im, ax=ax)
+    plt.show()
 
 class CenterHead(nn.Module):
     def __init__(self, model_cfg, input_channels, num_class, class_names, grid_size, point_cloud_range, voxel_size,
@@ -55,6 +67,8 @@ class CenterHead(nn.Module):
         self.grid_size = grid_size
         self.point_cloud_range = point_cloud_range
         self.voxel_size = voxel_size
+        if (self.model_cfg.get('DOWNSAMPLE_LAYER', None)):
+            self.voxel_size = [self.voxel_size[0] * 2, self.voxel_size[1] * 2, self.voxel_size[2]]
         self.feature_map_stride = self.model_cfg.TARGET_ASSIGNER_CONFIG.get('FEATURE_MAP_STRIDE', None)
         self.upsample = self.model_cfg.get('UPSAMPLE', 1)
 
@@ -414,6 +428,8 @@ class CenterHead(nn.Module):
                 data_dict['gt_boxes'], feature_map_size=x.size()[2:],
                 feature_map_stride=data_dict.get('spatial_features_2d_strides', None)
             )
+            # pdb.set_trace()
+            # visualization_feature(target_dict['heatmaps'][0].squeeze(dim=0).cpu())
             self.forward_ret_dict['target_dicts'] = target_dict
 
         self.forward_ret_dict['pred_dicts'] = pred_dicts
