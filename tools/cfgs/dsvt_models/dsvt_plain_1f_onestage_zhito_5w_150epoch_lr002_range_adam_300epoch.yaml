@@ -157,8 +157,8 @@ MODEL:
 
 
       NMS_CONFIG:
-        NMS_TYPE: multi_class_nms  # only for centerhead， use mmdet3d version nms
-        NMS_THRESH: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+        NMS_TYPE: nms_gpu  # only for centerhead， use mmdet3d version nms
+        NMS_THRESH: [0.01, 0.1, 0.1, 0.1, 0.1, 0.1]
         NMS_PRE_MAXSIZE: [4096, 4096, 4096, 4096, 4096, 4096]
         NMS_POST_MAXSIZE: [800, 800, 800, 800, 800, 800]
 

@@ -73,17 +73,18 @@ class BaseBEVResBackbone(nn.Module):
         c_in_list = [input_channels, *num_filters[:-1]]
         self.blocks = nn.ModuleList()
         self.deblocks = nn.ModuleList()
-        self.downlayer = nn.Sequential(
-                        nn.Conv2d(
-                            128, 128,
-                            3,
-                            stride=2,
-                            padding = 1,
-                            bias=False
-                        ),
-                        nn.BatchNorm2d(128, eps=1e-3, momentum=0.01),
-                        nn.ReLU()
-                    )
+        if (self.model_cfg.get('DOWNSAMPLE_LAYER', None)):
+            self.downlayer = nn.Sequential(
+                            nn.Conv2d(
+                                128, 128,
+                                3,
+                                stride=2,
+                                padding = 1,
+                                bias=False
+                            ),
+                            nn.BatchNorm2d(128, eps=1e-3, momentum=0.01),
+                            nn.ReLU()
+                        )
         for idx in range(num_levels):
             cur_layers = [
                 # nn.ZeroPad2d(1),
@@ -139,6 +140,7 @@ class BaseBEVResBackbone(nn.Module):
         ups = []
         ret_dict = {}
         x = spatial_features
+        # pdb.set_trace()
         if (self.model_cfg.get('DOWNSAMPLE_LAYER', None)):
             x = self.downlayer(x)
         for i in range(len(self.blocks)):
