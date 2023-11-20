@@ -5,7 +5,8 @@ from torch.utils.checkpoint import checkpoint
 from .dsvt_input_layer import DSVTInputLayer
 import pdb
 import time
-
+from .unified_normalization import UN1d
+unified_normalization = False
 class DSVT(nn.Module):
     '''Dynamic Sparse Voxel Transformer Backbone.
     Args:
@@ -40,6 +41,9 @@ class DSVT(nn.Module):
         self.reduction_type = self.model_cfg.get('reduction_type', 'attention')
         # save GPU memory
         self.use_torch_ckpt = self.model_cfg.get('USE_CHECKPOINT', False)
+        if (self.model_cfg.get('Unified_Normalization', None)):
+            global unified_normalization
+            unified_normalization = True
 
         # Sparse Regional Attention Blocks
         stage_num = len(block_name)
@@ -57,7 +61,10 @@ class DSVT(nn.Module):
                     block_module(dmodel_this_stage, num_head_this_stage, dfeed_this_stage,
                                  dropout, activation, batch_first=True)
                 )
-                norm_list.append(nn.LayerNorm(dmodel_this_stage))
+                if not unified_normalization:
+                    norm_list.append(nn.LayerNorm(dmodel_this_stage))
+                else:
+                    norm_list.append(UN1d(dmodel_this_stage))
             self.__setattr__(f'stage_{stage_id}', nn.ModuleList(block_list))
             self.__setattr__(f'residual_norm_stage_{stage_id}', nn.ModuleList(norm_list))
 
@@ -216,7 +223,10 @@ class DSVT_EncoderLayer(nn.Module):
                  activation="relu", batch_first=True, mlp_dropout=0):
         super().__init__()
         self.win_attn = SetAttention(d_model, nhead, dropout, dim_feedforward, activation, batch_first, mlp_dropout)
-        self.norm = nn.LayerNorm(d_model)
+        if not unified_normalization:
+            self.norm = nn.LayerNorm(d_model)
+        else:
+            self.norm = UN1d(d_model)
         self.d_model = d_model
 
     def forward(self,src,set_voxel_inds,set_voxel_masks,pos=None):
@@ -242,8 +252,12 @@ class SetAttention(nn.Module):
         self.dropout = nn.Dropout(mlp_dropout)
         self.linear2 = nn.Linear(dim_feedforward, d_model)
         self.d_model = d_model
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
+        if not unified_normalization:
+            self.norm1 = nn.LayerNorm(d_model)
+            self.norm2 = nn.LayerNorm(d_model)
+        else:
+            self.norm1 = UN1d(d_model)
+            self.norm2 = UN1d(d_model)
         self.dropout1 = nn.Identity()
         self.dropout2 = nn.Identity()
 

@@ -76,14 +76,14 @@ MODEL:
       sparse_shape: [384, 264, 1]
       downsample_stride: []
       d_model: [128]
-      set_info: [[36, 4]]
+      set_info: [[36, 2]]
       window_shape: [[12, 12, 1]]
       hybrid_factor: [2, 2, 1] # x, y, z
       shifts_list: [[[0, 0, 0], [6, 6, 0]]]
       normalize_pos: False
 
     block_name: ['DSVTBlock']
-    set_info: [[36, 4]]
+    set_info: [[36, 2]]
     d_model: [128]
     nhead: [8]
     dim_feedforward: [384]
@@ -93,6 +93,7 @@ MODEL:
     conv_out_channel: 128
     # You can enable torch.utils.checkpoint to save GPU memory
     USE_CHECKPOINT: True
+    Unified_Normalization: True
 
   MAP_TO_BEV:
     NAME: PointPillarScatter3d
