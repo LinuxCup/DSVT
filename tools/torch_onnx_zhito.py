@@ -35,7 +35,7 @@ test_set, test_loader, sampler = build_dataloader(
 
 model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=test_set)
 # ckpt = "/home/zhenghu/DeepLearning/DSVT/output/cfgs/dsvt_models/dsvt_plain_1f_onestage/default/ckpt/latest_model.pth"
-ckpt = "/home/zhenghu/DeepLearning/DSVT/output/dsvt_models/dsvt_plain_1f_onestage_zhito/default/ckpt/latest_model.pth"
+ckpt = "/home/zhenghu/DeepLearning/DSVT/output/dsvt_models/dsvt_plain_1f_onestage_zhito/default/ckpt/latest_model_4dsvt.pth"
 model.load_params_from_file(filename=ckpt, logger=logger, to_cpu=False, pre_trained_path=None)
 model.eval()
 model.cuda()
@@ -374,11 +374,11 @@ with torch.no_grad():
 
     pillars_coors_in_win_shift0 = torch.from_numpy(np.load('npy_file/dsvt_input_layer/pillars_coors_in_win_shift0.npy').reshape(-1, 3)).cuda()
     pillars_coors_in_win_shift1 = torch.from_numpy(np.load('npy_file/dsvt_input_layer/pillars_coors_in_win_shift1.npy').reshape(-1, 3)).cuda()
-    # pillars_coors_in_win_shift0 = pillars_coors_in_win_shift0[:24 * 24,...]
-    # pillars_coors_in_win_shift1 = pillars_coors_in_win_shift1[:24 * 24,...]
+    pillars_coors_in_win_shift0 = pillars_coors_in_win_shift0[:24 * 24,...]
+    pillars_coors_in_win_shift1 = pillars_coors_in_win_shift1[:24 * 24,...]
     pdb.set_trace()
-    base_name = "pos_enbedding_zhito_dynamic"
-    # base_name = "pos_embedding_zhito"
+    # base_name = "pos_enbedding_zhito_dynamic"
+    base_name = "pos_embedding_zhito"
     ts_path = f"{base_name}.ts"
     onnx_path = f"{base_name}.onnx"
 

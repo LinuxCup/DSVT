@@ -23,6 +23,7 @@ import pdb
 import os
 # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 import time
+import shutil
 
 result_template = {
           "ID": 0, 
@@ -60,7 +61,8 @@ class DemoDataset(DatasetTemplate):
         # data_file_list.sort()
 
         # pdb.set_trace()
-        data_file_list, label_file_list = self.init_data_list(str(self.root_path /'j6_test_20220525_10000.txt'))
+        # data_file_list, label_file_list = self.init_data_list(str(self.root_path /'j6_test_20220525_10000.txt'))
+        data_file_list, label_file_list = self.init_data_list(str(self.root_path /'j6_test_202300728_car_30000_pedestrian_15000-5000-1000-6000.txt'))
         self.sample_file_list = data_file_list
         self.label_file_list = label_file_list
 
@@ -77,6 +79,9 @@ class DemoDataset(DatasetTemplate):
             # data_path = '/home/zhenghu/datasets/zhito/J6/choosed_lidar_data_20211016_j6a4_urban_rainy/mindflow_14_2520_1/sequence069/pcl/bin/1634360203.995325.bin'
             # data_path = '/home/zhenghu/datasets/zhito/J6/choosed_lidar_data_20220318pm_j6a1_urban_shujijinglu_augment_ros_2hz/mindflow_24_2738/sequence035/pcl/bin/1647592909.218359.bin'
             print('path: ', data_path)
+            # if os.path.exists(data_path) is False:
+            #     print("file path is not exist........")
+            #     return None
             label_path = str(self.root_path) + self.label_file_list[index].replace('\n','')
             self.gt_boxes = self.init_gtboxes_data(label_path)
 
@@ -111,7 +116,7 @@ class DemoDataset(DatasetTemplate):
     def output_result(self, result, index):
         
         ## init path and read label file
-        output_root = "./results/Results_Dsvt_ZhitoData_AllCls_J6_0726_02_noiou"
+        output_root = "./results/Results_Dsvt_ZhitoData_AllCls_J6_0816_02_5W_150epoch_lr002_range_adam_300epoch_2dsvt_threshold02_new"
         label_file = (str(self.root_path) + self.label_file_list[index]).replace('\n','')
         result_file = Path(os.getcwd()).parent / (output_root + self.label_file_list[index]).replace('\n','')
         with open(label_file, 'r', encoding='utf-8') as j:
@@ -169,7 +174,9 @@ class DemoDataset(DatasetTemplate):
             for i in range(len(contents['labels'])):
                 ele = contents['labels'][i]['location'] + contents['labels'][i]['size'] + [contents['labels'][i]['rotation'][-1]]
                 # pdb.set_trace()
-                if (max(abs(np.array(ele))) > 74.88):
+                if (abs(ele[0]) > 61.):
+                    continue
+                if (abs(ele[1]) > 40.):
                     continue
                 eles.append(ele)
             return np.array(eles)
@@ -224,8 +231,10 @@ def main():
     model.eval()
     with torch.no_grad():
         for idx, data_dict in enumerate(demo_dataset):
-            if idx < 30:
-                continue
+            # if (data_dict is None):
+            #     continue
+            # if idx < 130:
+            #     continue
             t0 = time.time()
             logger.info(f'Visualized sample index: \t{idx + 1}')
             data_dict = demo_dataset.collate_batch([data_dict])

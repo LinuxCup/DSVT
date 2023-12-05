@@ -7,6 +7,8 @@ import pdb
 import time
 import numpy as np
 # from pcdet.ops.myunique.muunique_op import myunique_
+from .unified_normalization import UN1d
+unified_normalization = False
 
 class DSVT(nn.Module):
     '''Dynamic Sparse Voxel Transformer Backbone.
@@ -40,7 +42,9 @@ class DSVT(nn.Module):
         dropout = self.model_cfg.dropout
         activation = self.model_cfg.activation
         self.reduction_type = self.model_cfg.get('reduction_type', 'attention')
- 
+        if (self.model_cfg.get('Unified_Normalization', None)):
+            global unified_normalization
+            unified_normalization = True
         # Sparse Regional Attention Blocks
         stage_num = len(block_name)
         for stage_id in range(stage_num):
@@ -57,7 +61,10 @@ class DSVT(nn.Module):
                     block_module(dmodel_this_stage, num_head_this_stage, dfeed_this_stage,
                                  dropout, activation, batch_first=True)
                 )
-                norm_list.append(nn.LayerNorm(dmodel_this_stage))
+                if not unified_normalization:
+                    norm_list.append(nn.LayerNorm(dmodel_this_stage))
+                else:
+                    norm_list.append(UN1d(dmodel_this_stage))
             self.__setattr__(f'stage_{stage_id}', nn.ModuleList(block_list))
             self.__setattr__(f'residual_norm_stage_{stage_id}', nn.ModuleList(norm_list))
 
@@ -169,7 +176,7 @@ class DSVT(nn.Module):
             for i in range(len(block_layers)):
                 block = block_layers[i]
                 residual = output.clone()
-                # pdb.set_trace()
+                pdb.set_trace()
                 output = block(output, set_voxel_inds_list[stage_id], set_voxel_masks_list[stage_id], pos_embed_list[stage_id][i], \
                                block_id=block_id)
                 output = residual_norm_layers[i](output + residual)
@@ -272,10 +279,15 @@ class DSVT_EncoderLayer(nn.Module):
         super().__init__()
         self.win_attn = SetAttention(d_model, nhead, dropout, dim_feedforward, activation, batch_first, mlp_dropout)
         self.norm = nn.LayerNorm(d_model)
+        if not unified_normalization:
+            self.norm = nn.LayerNorm(d_model)
+        else:
+            self.norm = UN1d(d_model)
         self.d_model = d_model
 
     def forward(self,src,set_voxel_inds,set_voxel_masks,pos=None,onnx_export=False):
         # pdb.set_trace()
+        test_index = torch.arange(0,10)
         output = src
         identity = output
         output = self.win_attn(output, pos, set_voxel_masks, set_voxel_inds, onnx_export)
@@ -299,8 +311,12 @@ class SetAttention(nn.Module):
         self.dropout = nn.Dropout(mlp_dropout)
         self.linear2 = nn.Linear(dim_feedforward, d_model)
         self.d_model = d_model
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
+        if not unified_normalization:
+            self.norm1 = nn.LayerNorm(d_model)
+            self.norm2 = nn.LayerNorm(d_model)
+        else:
+            self.norm1 = UN1d(d_model)
+            self.norm2 = UN1d(d_model)
         self.dropout1 = nn.Identity()
         self.dropout2 = nn.Identity()
 
