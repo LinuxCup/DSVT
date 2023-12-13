@@ -132,8 +132,14 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
                 'norm': total_norm.item()
             })
 
-            iou_loss_head_tb.update(tb_dict['iou_loss_head_0'])
-            iou_reg_loss_tb.update(tb_dict['iou_reg_loss_head_0'])
+            if 'iou_loss_head_0' in tb_dict:
+                iou_loss_head_tb.update(tb_dict['iou_loss_head_0'])
+            if 'iou_reg_loss_head_0' in tb_dict:
+                iou_reg_loss_tb.update(tb_dict['iou_reg_loss_head_0'])
+            if 'loss_iou' in tb_dict:
+                iou_loss_head_tb.update(tb_dict['loss_iou'])
+            if 'matched_ious' in tb_dict:
+                iou_reg_loss_tb.update(tb_dict['matched_ious'])
             learning_rate_tb.update(cur_lr)
 
             if use_logger_to_record:

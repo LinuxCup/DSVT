@@ -29,7 +29,8 @@ class CenterPoint(Detector3DTemplate):
         #     t0 = time.time()
 
         if self.training:
-            loss, tb_dict, disp_dict = self.get_training_loss()
+            # loss, tb_dict, disp_dict = self.get_training_loss()
+            loss, tb_dict, disp_dict = self.get_training_transhead_loss(batch_dict)
 
             ret_dict = {
                 'loss': loss
@@ -41,6 +42,19 @@ class CenterPoint(Detector3DTemplate):
             t1 = time.time()
             # print('post_process: ', t1-t0)
             return pred_dicts, recall_dicts
+
+    def get_training_transhead_loss(self,batch_dict):
+        disp_dict = {}
+
+        loss_trans, tb_dict = batch_dict['loss'],batch_dict['tb_dict']
+        tb_dict = {
+            'loss_trans': loss_trans.item(),
+            **tb_dict
+        }
+
+        loss = loss_trans
+        return loss, tb_dict, disp_dict
+
 
     def get_training_loss(self):
         disp_dict = {}

@@ -3,7 +3,7 @@ import numpy as np
 
 from ...ops.iou3d_nms import iou3d_nms_utils
 from ...ops.ioubev_nms import ioubev_nms_utils
-
+import pdb
 
 def class_agnostic_nms(box_scores, box_preds, nms_config, score_thresh=None):
     src_box_scores = box_scores
@@ -16,6 +16,7 @@ def class_agnostic_nms(box_scores, box_preds, nms_config, score_thresh=None):
     if box_scores.shape[0] > 0:
         box_scores_nms, indices = torch.topk(box_scores, k=min(nms_config.NMS_PRE_MAXSIZE[0], box_scores.shape[0]))
         boxes_for_nms = box_preds[indices]
+        # pdb.set_trace()
         keep_idx, selected_scores = getattr(iou3d_nms_utils, nms_config.NMS_TYPE)(
                 boxes_for_nms[:, 0:7], box_scores_nms, nms_config.NMS_THRESH[0], **nms_config
         )

@@ -11,6 +11,7 @@ from .target_assigner.hungarian_assigner import HungarianAssigner3D
 from ...utils import loss_utils
 from ..model_utils import centernet_utils
 from ..model_utils import model_nms_utils
+import pdb
 
 
 class SeparateHead_Transfusion(nn.Module):
@@ -65,6 +66,9 @@ class TransFusionHead(nn.Module):
         self.grid_size = grid_size
         self.point_cloud_range = point_cloud_range
         self.voxel_size = voxel_size
+        if (model_cfg.get('DOWNSAMPLE_LAYER', None)):
+            self.voxel_size = [self.voxel_size[0] * 2, self.voxel_size[1] * 2, self.voxel_size[2]]
+            self.grid_size = np.array([round(self.grid_size[0] / 2), round(self.grid_size[1] / 2), self.grid_size[2]])
         self.num_classes = num_class
 
         self.model_cfg = model_cfg
@@ -76,7 +80,7 @@ class TransFusionHead(nn.Module):
         self.bn_momentum = self.model_cfg.BN_MOMENTUM
         self.nms_kernel_size = self.model_cfg.NMS_KERNEL_SIZE
 
-        self.query_radius = 20
+        self.query_radius = self.model_cfg.get('QUERY_RADIUS', 20)
         self.query_range = torch.arange(-self.query_radius, self.query_radius+1)
         self.query_r_coor_x, self.query_r_coor_y = torch.meshgrid(self.query_range, self.query_range) 
 
@@ -98,7 +102,7 @@ class TransFusionHead(nn.Module):
         self.loss_heatmap_weight = self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['hm_weight']
         self.loss_iou_rescore_weight = self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['loss_iou_rescore_weight']
 
-        self.code_size = 10
+        self.code_size = 8
 
         # a shared convolution
         self.shared_conv = nn.Conv2d(in_channels=input_channels,out_channels=hidden_channel,kernel_size=3,padding=1)
@@ -181,6 +185,11 @@ class TransFusionHead(nn.Module):
         elif self.dataset_name == "Waymo":
             local_max[ :, 1, ] = F.max_pool2d(heatmap[:, 1], kernel_size=1, stride=1, padding=0)
             local_max[ :, 2, ] = F.max_pool2d(heatmap[:, 2], kernel_size=1, stride=1, padding=0)
+        # for zhito dataset
+        elif self.dataset_name == "Zhito":
+            local_max[ :, 3, ] = F.max_pool2d(heatmap[:, 3], kernel_size=1, stride=1, padding=0)
+            local_max[ :, 4, ] = F.max_pool2d(heatmap[:, 4], kernel_size=1, stride=1, padding=0)
+            local_max[ :, 5, ] = F.max_pool2d(heatmap[:, 5], kernel_size=1, stride=1, padding=0)
         heatmap = heatmap * (heatmap == local_max)
         heatmap = heatmap.view(batch_size, heatmap.shape[1], -1)
  
@@ -248,7 +257,7 @@ class TransFusionHead(nn.Module):
 
     def forward(self, batch_dict):
         feats = batch_dict['spatial_features_2d']
-        # convert [y,x] -> [x,y]
+        # convert [bs,y,x] -> [bs,x,y] torch.Size([1, 6, 192, 132])
         feats = feats.permute(0,1,3,2).contiguous()
 
         res = self.predict(feats)
@@ -365,10 +374,10 @@ class TransFusionHead(nn.Module):
 
                 center = torch.tensor([coor_x, coor_y], dtype=torch.float32, device=device)
                 center_int = center.to(torch.int32)
-                # centernet_utils.draw_gaussian_to_heatmap(heatmap[gt_labels_3d[idx]], center_int, radius)
-                centernet_utils.draw_gaussian_to_heatmap(heatmap[gt_labels_3d[idx]], center_int[[1,0]], radius)
+                centernet_utils.draw_gaussian_to_heatmap(heatmap[gt_labels_3d[idx]], center_int, radius)
 
-
+        # convert [bs,y,x] -> [bs,x,y] torch.Size([1, 6, 192, 132])
+        heatmap = heatmap.permute(0,2,1)
         mean_iou = ious[pos_inds].sum() / max(len(pos_inds), 1)
         return (labels[None], label_weights[None], bbox_targets[None], bbox_weights[None], int(pos_inds.shape[0]), float(mean_iou), heatmap[None])
 
@@ -398,7 +407,7 @@ class TransFusionHead(nn.Module):
             cls_score, one_hot_targets, label_weights
         ).sum() / max(num_pos, 1)
 
-        preds = torch.cat([pred_dicts[head_name] for head_name in self.model_cfg.SEPARATE_HEAD_CFG.HEAD_ORDER], dim=1).permute(0, 2, 1)
+        preds = torch.cat([pred_dicts[head_name] for head_name in self.model_cfg.SEPARATE_HEAD_CFG.HEAD_ORDER if head_name != 'iou'], dim=1).permute(0, 2, 1)
         code_weights = self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['code_weights']
         reg_weights = bbox_weights * bbox_weights.new_tensor(code_weights)
 
@@ -447,7 +456,7 @@ class TransFusionHead(nn.Module):
         return loss_all,loss_dict
 
     def encode_bbox(self, bboxes):
-        code_size = 10
+        code_size = self.code_size
         targets = torch.zeros([bboxes.shape[0], code_size]).to(bboxes.device)
         targets[:, 0] = (bboxes[:, 0] - self.point_cloud_range[0]) / (self.feature_map_stride * self.voxel_size[0])
         targets[:, 1] = (bboxes[:, 1] - self.point_cloud_range[1]) / (self.feature_map_stride * self.voxel_size[1])
@@ -553,6 +562,13 @@ class TransFusionHead(nn.Module):
                 dict(num_class=1, class_names=["Pedestrian"], indices=[1], radius=0.7),
                 dict(num_class=1, class_names=["Cyclist"], indices=[2], radius=0.7),
             ]
+        elif self.dataset_name == "Zhito":
+            self.tasks = [
+                dict(num_class=3, class_names=[], indices=[0, 1, 2], radius=-1),
+                dict(num_class=1, class_names=["pedestrian"], indices=[3], radius=0.175),
+                dict(num_class=1,class_names=["cyclist"],indices=[4],radius=0.175),
+                dict(num_class=1,class_names=["unknown"],indices=[5],radius=0.175),
+            ]
 
         new_ret_dict = []
         for i in range(batch_size):
@@ -577,8 +593,8 @@ class TransFusionHead(nn.Module):
                 if task["radius"] > 0:
                     top_scores = scores[task_mask]
                     boxes_for_nms = boxes3d[task_mask][:, :7].clone().detach()
-                    task_nms_config = copy.deepcopy(self.model_cfg.POST_PROCESSING.NMS_CONFIG)
-                    task_nms_config.NMS_THRESH = task["radius"]
+                    task_nms_config = copy.deepcopy(self.model_cfg.NMS_CONFIG)
+                    task_nms_config.NMS_THRESH = [task["radius"], 0.]
                     task_keep_indices, _ = model_nms_utils.class_agnostic_nms(
                             box_scores=top_scores, box_preds=boxes_for_nms,
                             nms_config=task_nms_config, score_thresh=task_nms_config.SCORE_THRES)
