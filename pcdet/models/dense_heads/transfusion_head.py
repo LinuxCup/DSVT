@@ -118,7 +118,8 @@ class TransFusionHead(nn.Module):
         self.code_size = 8
 
         # a shared convolution
-        self.shared_conv = nn.Conv2d(in_channels=input_channels,out_channels=hidden_channel,kernel_size=3,padding=1)
+        stride = self.model_cfg.get('STRIDE', 1)
+        self.shared_conv = nn.Conv2d(in_channels=input_channels,out_channels=hidden_channel,kernel_size=3,stride = stride,padding=1)
         layers = []
         layers.append(BasicBlock2D(hidden_channel,hidden_channel, kernel_size=3,padding=1,bias=True))
         layers.append(nn.Conv2d(in_channels=hidden_channel,out_channels=num_class,kernel_size=3,padding=1))
@@ -279,7 +280,10 @@ class TransFusionHead(nn.Module):
         return res_layer
 
     def forward(self, batch_dict):
-        feats = batch_dict['spatial_features_2d']
+        try:
+            feats = batch_dict['spatial_features_2d']
+        except:
+            feats = batch_dict['spatial_features'] #torch.Size([1, 128, 264, 384])
         # convert [bs,y,x] -> [bs,x,y] torch.Size([1, 6, 192, 132])
         feats = feats.permute(0,1,3,2).contiguous()
 
@@ -562,16 +566,16 @@ class TransFusionHead(nn.Module):
         # batch_score = batch_score * preds_dicts["query_heatmap_score"] * one_hot
         batch_score = batch_score  * preds_dicts["query_heatmap_score"] # batch_score from transformer via quert (sparse feature); but preds_dicts["query_heatmap_score"] and ont_hot from heatmap(dense feature)
         # tensor([[ 2],
-        # [29],
-        # [36]], device='cuda:0')
+        # [16],
+        # [28]], device='cuda:0')
 
         # query_heatmap_score
         # tensor([[ 0],
         # [ 2],
-        # [ 4],
-        # [27],
-        # [29],
-        # [36]], device='cuda:0')
+        # [ 5],
+        # [16],
+        # [28],
+        # [66]], device='cuda:0')
 
         # batch_score = batch_score
         batch_center = preds_dicts["center"]

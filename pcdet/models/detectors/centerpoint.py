@@ -13,15 +13,15 @@ class CenterPoint(Detector3DTemplate):
         # pdb.set_trace()
         t0 = time.time()
 
-        batch_dict = self.module_list[0](batch_dict)
-        # pdb.set_trace()
-        batch_dict = self.module_list[1](batch_dict)
-        batch_dict = self.module_list[2](batch_dict)
-        batch_dict = self.module_list[3](batch_dict)
-        batch_dict = self.module_list[4](batch_dict)
-        # for cur_module in self.module_list:
+        # batch_dict = self.module_list[0](batch_dict)
+        # # pdb.set_trace()
+        # batch_dict = self.module_list[1](batch_dict)
+        # batch_dict = self.module_list[2](batch_dict)
+        # batch_dict = self.module_list[3](batch_dict)
+        # batch_dict = self.module_list[4](batch_dict)
+        for cur_module in self.module_list:
         #     # pdb.set_trace()
-        #     batch_dict = cur_module(batch_dict)
+            batch_dict = cur_module(batch_dict)
         #     torch.cuda.synchronize()
         #     t1 = time.time()
         #     # print(cur_module)
