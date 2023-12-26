@@ -26,6 +26,7 @@ import os
 # sys.path.remove('/data/zhenghu/local/OpenPCDet')
 
 # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+import time
 
 result_template = {
           "ID": 0, 
@@ -63,7 +64,7 @@ class DemoDataset(DatasetTemplate):
         # data_file_list.sort()
 
         # pdb.set_trace()
-        data_file_list, label_file_list = self.init_data_list(str(self.root_path/ 'car_pedestrian_more_new' /'j6_test_202300728_car_30000_pedestrian_15000-5000-1000-6000.txt'))
+        data_file_list, label_file_list = self.init_data_list(str(self.root_path /'j6_test_202300728_car_30000_pedestrian_15000-5000-1000-6000.txt'))
         self.sample_file_list = data_file_list
         self.label_file_list = label_file_list
 
@@ -103,7 +104,7 @@ class DemoDataset(DatasetTemplate):
     def output_result(self, result, index):
         
         ## init path and read label file
-        output_root = "./results/Results_Dsvt_ZhitoData_AllCls_J6_0816_02_5W_150epoch_lr002_range_adam_threshold02"
+        output_root = "./results/adam_2dsvt_1_2rpn_sparse_pre_threshold02"
         label_file = (str(self.root_path) + self.label_file_list[index]).replace('\n','')
         result_file = Path(os.getcwd()).parent / (output_root + self.label_file_list[index]).replace('\n','')
         with open(label_file, 'r', encoding='utf-8') as j:
@@ -217,7 +218,7 @@ def main():
     model.eval()
     with torch.no_grad():
         for idx, data_dict in enumerate(demo_dataset):
-            # if idx < 83:
+            # if idx < 5: # 5 40 71
             #     continue
             logger.info(f'Visualized sample index: \t{idx + 1}')
             data_dict = demo_dataset.collate_batch([data_dict])

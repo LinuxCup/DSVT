@@ -14,6 +14,19 @@ from ..model_utils import model_nms_utils
 import pdb
 
 
+import matplotlib.pyplot as plt
+def visualization_feature(feature):
+    grid_sz_z = feature.shape[0]
+    row_vis = 3
+    fig, (axes) = plt.subplots((int)(grid_sz_z/row_vis + 1),row_vis)
+    for i,t in enumerate(axes):
+        for j,ax in enumerate(t):
+            if (i*row_vis + j) >= grid_sz_z:
+                continue
+            im = ax.imshow(feature[i*row_vis+j])
+            fig.colorbar(im, ax=ax)
+    plt.show()
+
 class SeparateHead_Transfusion(nn.Module):
     def __init__(self, input_channels, head_channels, kernel_size, sep_head_dict, init_bias=-2.19, use_bias=False):
         super().__init__()
@@ -170,6 +183,8 @@ class TransFusionHead(nn.Module):
         # query initialization
         dense_heatmap = self.heatmap_head(lidar_feat)
         heatmap = dense_heatmap.detach().sigmoid()
+        # pdb.set_trace()
+        # visualization_feature(dense_heatmap[0].sigmoid().permute(0,2,1).squeeze(dim=0).cpu())
         x_grid, y_grid = heatmap.shape[-2:]
         padding = self.nms_kernel_size // 2
         local_max = torch.zeros_like(heatmap)
@@ -191,6 +206,8 @@ class TransFusionHead(nn.Module):
             local_max[ :, 4, ] = F.max_pool2d(heatmap[:, 4], kernel_size=1, stride=1, padding=0)
             local_max[ :, 5, ] = F.max_pool2d(heatmap[:, 5], kernel_size=1, stride=1, padding=0)
         heatmap = heatmap * (heatmap == local_max)
+        # pdb.set_trace()
+        # visualization_feature(heatmap[0].permute(0,2,1).squeeze(dim=0).cpu())
         heatmap = heatmap.view(batch_size, heatmap.shape[1], -1)
  
         # top num_proposals among all classes
@@ -199,10 +216,14 @@ class TransFusionHead(nn.Module):
         ]
         top_proposals_class = top_proposals // heatmap.shape[-1]
         top_proposals_index = top_proposals % heatmap.shape[-1]
+        # tensor([[ 0,  4],
+        # [ 0, 36]], device='cuda:0')
+
         query_feat = lidar_feat_flatten.gather(
             index=top_proposals_index[:, None, :].expand(-1, lidar_feat_flatten.shape[1], -1),
             dim=-1,
         )
+        # pdb.set_trace()
         self.query_labels = top_proposals_class
 
         # add category embedding
@@ -251,7 +272,9 @@ class TransFusionHead(nn.Module):
             index=top_proposals_index[:, None, :].expand(-1, self.num_classes, -1),
             dim=-1,
         )
-        res_layer["dense_heatmap"] = dense_heatmap
+        res_layer["dense_heatmap"] = dense_heatmap #torch.Size([1, 6, 192, 132])
+        # pdb.set_trace()
+        # visualization_feature(res_layer['heatmap'][0].permute(0,2,1).squeeze(dim=0).cpu())
 
         return res_layer
 
@@ -535,12 +558,29 @@ class TransFusionHead(nn.Module):
         one_hot = F.one_hot(
             self.query_labels, num_classes=self.num_classes
         ).permute(0, 2, 1)
-        batch_score = batch_score * preds_dicts["query_heatmap_score"] * one_hot
+        # pdb.set_trace()
+        # batch_score = batch_score * preds_dicts["query_heatmap_score"] * one_hot
+        batch_score = batch_score  * preds_dicts["query_heatmap_score"] # batch_score from transformer via quert (sparse feature); but preds_dicts["query_heatmap_score"] and ont_hot from heatmap(dense feature)
+        # tensor([[ 2],
+        # [29],
+        # [36]], device='cuda:0')
+
+        # query_heatmap_score
+        # tensor([[ 0],
+        # [ 2],
+        # [ 4],
+        # [27],
+        # [29],
+        # [36]], device='cuda:0')
+
+        # batch_score = batch_score
         batch_center = preds_dicts["center"]
         batch_height = preds_dicts["height"]
         batch_dim = preds_dicts["dim"]
         batch_rot = preds_dicts["rot"]
         batch_vel = None
+        # pdb.set_trace()
+        # visualization_feature(preds_dicts['dense_heatmap'][0].permute(0,2,1).sigmoid().squeeze(dim=0).cpu())
         if "vel" in preds_dicts:
             batch_vel = preds_dicts["vel"]
         batch_iou = (preds_dicts['iou'] + 1) * 0.5 if 'iou' in preds_dicts else None
@@ -564,10 +604,10 @@ class TransFusionHead(nn.Module):
             ]
         elif self.dataset_name == "Zhito":
             self.tasks = [
-                dict(num_class=3, class_names=[], indices=[0, 1, 2], radius=-1),
-                dict(num_class=1, class_names=["pedestrian"], indices=[3], radius=0.175),
-                dict(num_class=1,class_names=["cyclist"],indices=[4],radius=0.175),
-                dict(num_class=1,class_names=["unknown"],indices=[5],radius=0.175),
+                dict(num_class=3, class_names=[], indices=[0, 1, 2], radius=0.175),
+                dict(num_class=1, class_names=["pedestrian"], indices=[3], radius=0.0175),
+                dict(num_class=1,class_names=["cyclist"],indices=[4],radius=0.0175),
+                dict(num_class=1,class_names=["unknown"],indices=[5],radius=0.0175),
             ]
 
         new_ret_dict = []
