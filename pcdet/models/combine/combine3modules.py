@@ -32,7 +32,7 @@ class Combine3Modules(nn.Module):
                         'iou', 
                         'hm',
         ]
-        trt_path = '/home/zhenghu/DeepLearning/DSVT/tools/combine3modules_dynamic_shape_noscatter_fp16_zhito.engine'
+        trt_path = '/home/zhenghu/DeepLearning/DSVT/tools/combine3modules_dynamic_shape_noscatter_fp16_zhito_2dsvt_1_2rpn.engine'
         # trt_path = '/home/zhenghu/DeepLearning/DSVT/tools/combine3modules_dynamic_shape_noscatter_fp16_waymo.engine'
         self.allcombinetrt = TRTWrapper(trt_path, input_names, output_names)
 

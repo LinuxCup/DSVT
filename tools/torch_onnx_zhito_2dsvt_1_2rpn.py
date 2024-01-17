@@ -8,7 +8,7 @@ import datetime
 # import numpy as np
 import torch
 # import onnx
-import onnxruntime as ort
+# import onnxruntime as ort
 import torch.nn as nn
 
 # from typing import Sequence, NamedTuple
@@ -383,7 +383,6 @@ with torch.no_grad():
         # operator_export_type=torch.onnx.OperatorExportTypes.ONNX_ATEN_FALLBACK,
         # enable_onnx_checker=False,
     )
-
 
 
 '''
