@@ -239,6 +239,9 @@ class TransfusionHead(nn.Module):
         self.query_r_coor_x, self.query_r_coor_y = torch.meshgrid(self.query_range, self.query_range) 
 
 
+        self.heatmap_flatten_idx = torch.zeros([1,152064], dtype=torch.long, device='cuda')
+        self.heatmap_flatten_val = torch.zeros([1,152064], device='cuda')
+
     def create_2D_grid(self, x_size, y_size):
         meshgrid = [[0, x_size - 1, x_size], [0, y_size - 1, y_size]]
         # NOTE: modified
@@ -274,6 +277,9 @@ class TransfusionHead(nn.Module):
         # local_max[ :, 3, ] = F.max_pool2d(heatmap[:, 3], kernel_size=1, stride=1, padding=0)
         # local_max[ :, 4, ] = F.max_pool2d(heatmap[:, 4], kernel_size=1, stride=1, padding=0)
         # local_max[ :, 5, ] = F.max_pool2d(heatmap[:, 5], kernel_size=1, stride=1, padding=0)
+        local_max[ :, 3, ] = F.max_pool2d(heatmap[:, 3].unsqueeze(0), kernel_size=1, stride=1, padding=0).squeeze(0)
+        local_max[ :, 4, ] = F.max_pool2d(heatmap[:, 4].unsqueeze(0), kernel_size=1, stride=1, padding=0).squeeze(0)
+        local_max[ :, 5, ] = F.max_pool2d(heatmap[:, 5].unsqueeze(0), kernel_size=1, stride=1, padding=0).squeeze(0)
         heatmap = heatmap * (heatmap == local_max)
         # pdb.set_trace()
         # visualization_feature(heatmap[0].permute(0,2,1).squeeze(dim=0).cpu())
@@ -296,18 +302,31 @@ class TransfusionHead(nn.Module):
         # pdb.set_trace()
 
 
+        # heatmap_flatten = heatmap.view(-1)
+        # heatmap_flatten_idx = torch.zeros([1,heatmap.view(batch_size, -1).shape[-1]], dtype=torch.long, device=heatmap_flatten.device)
+        # heatmap_flatten_idx_ = torch.nonzero(heatmap_flatten > 1e-3)
+        # heatmap_flatten_idx[..., : heatmap_flatten_idx_.shape[0]] = heatmap_flatten_idx_.squeeze(1).view(1,-1)
+        # heatmap_flatten_val = torch.zeros([1,heatmap.view(batch_size, -1).shape[-1]], device=heatmap_flatten.device)
+        # heatmap_flatten_val_ = heatmap_flatten.index_select(dim = 0, index=heatmap_flatten_idx_.squeeze(1))
+        # heatmap_flatten_val[..., : heatmap_flatten_val_.shape[0]] = heatmap_flatten_val_.view(1,-1)
+        # top_proposals = my_sort(heatmap_flatten_val, heatmap_flatten_idx, heatmap_flatten_val_.shape[0].view(1,-1))[..., : self.num_proposals]
+        # top_proposals = top_proposals.long()
+        # pdb.set_trace()
+
+
+
         heatmap_flatten = heatmap.view(-1)
-        heatmap_flatten_idx = torch.zeros([1,heatmap.view(batch_size, -1).shape[-1]], dtype=torch.long, device=heatmap_flatten.device)
-        heatmap_flatten_idx_ = torch.nonzero(heatmap_flatten > 1e-3)
-        heatmap_flatten_idx[..., : heatmap_flatten_idx_.shape[0]] = heatmap_flatten_idx_.squeeze(1).view(1,-1)
-        heatmap_flatten_val = torch.zeros([1,heatmap.view(batch_size, -1).shape[-1]], device=heatmap_flatten.device)
-        heatmap_flatten_val_ = heatmap_flatten.index_select(dim = 0, index=heatmap_flatten_idx_.squeeze(1))
-        heatmap_flatten_val[..., : heatmap_flatten_val_.shape[0]] = heatmap_flatten_val_.view(1,-1)
-        top_proposals = my_sort(heatmap_flatten_val, heatmap_flatten_idx, heatmap_flatten_val_.shape[0].view(1,-1))[..., : self.num_proposals]
+        # heatmap_flatten_idx = torch.zeros([1,heatmap.view(batch_size, -1).shape[-1]], dtype=torch.long, device=heatmap_flatten.device)
+        heatmap_flatten_idx_ = torch.nonzero(heatmap_flatten > 1e-2).detach().clone()
+        self.heatmap_flatten_idx[..., : 20000] = F.pad(heatmap_flatten_idx_.permute(1,0),(0,20000), 'constant',0)[..., : 20000]
+        # heatmap_flatten_val = torch.zeros([1,heatmap.view(batch_size, -1).shape[-1]], device=heatmap_flatten.device)
+        heatmap_flatten_val_ = heatmap_flatten.index_select(dim = 0, index=heatmap_flatten_idx_.squeeze(1)).detach().clone()
+        self.heatmap_flatten_val[..., : 20000] = F.pad(heatmap_flatten_val_.view(1,-1),(0,20000), 'constant',0)[..., : 20000]
+        top_proposals = my_sort(self.heatmap_flatten_val, self.heatmap_flatten_idx, heatmap_flatten_val_.shape[0].view(1,-1))[..., : self.num_proposals]
         top_proposals = top_proposals.long()
         pdb.set_trace()
 
-        
+
         top_proposals_class = top_proposals // heatmap.shape[-1]
         top_proposals_index = top_proposals % heatmap.shape[-1]
         query_feat = lidar_feat_flatten.gather(
@@ -364,6 +383,8 @@ class TransfusionHead(nn.Module):
         iou = self.prediction_head.iou(query_feat)
         heatmap = self.prediction_head.heatmap(query_feat)
         center = center + query_pos.permute(0, 2, 1)
+        # pdb.set_trace()
+        # return torch.cat([center, height, dim, rot, iou, heatmap],dim=1)
         return center, height, dim, rot, iou, heatmap
 
 
@@ -394,6 +415,7 @@ class TransfusionHead(nn.Module):
 
     def forward(self, inputs):
         inputs = inputs.permute(0,1,3,2).contiguous()
+        # return self.predict(inputs)
         center, height, dim, rot, iou, heatmap = self.predict(inputs)
         res = self.get_bboxes(center, height, dim, rot, iou, heatmap)
 
@@ -566,6 +588,7 @@ with torch.no_grad():
     input_names = ["voxel_features", "voxel_coords"]
     output_names = ['center', 'center_z', 'dim', 'rot', 'iou', 'hm']
     output_names = ['objects']
+    # output_names = ['feats']
     
 
 

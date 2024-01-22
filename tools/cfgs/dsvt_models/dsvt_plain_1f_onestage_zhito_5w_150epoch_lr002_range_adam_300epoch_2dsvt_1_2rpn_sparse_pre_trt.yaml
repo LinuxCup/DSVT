@@ -96,8 +96,8 @@ MODEL:
     # You can enable torch.utils.checkpoint to save GPU memory
     USE_CHECKPOINT: True
   
-  # COMBINE3MODULES:
-  #   NAME: Combine3Modules
+  COMBINE3MODULES:
+    NAME: Combine3Modules
 
   MAP_TO_BEV:
     NAME: PointPillarScatter3d

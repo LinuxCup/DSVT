@@ -12,10 +12,10 @@
 # --optShapes=voxel_features:25000x128,voxel_coords:25000x4 \
 # --maxShapes=voxel_features:30000x128,voxel_coords:30000x4
 
-# /home/zhenghu/Downloads/TensorRT-8.5.1.7.Linux.x86_64-gnu.cuda-11.8.cudnn8.6/TensorRT-8.5.1.7/bin/trtexec --onnx=combine3modules_dynamic_shape_noscatter_zhito_2dsvt_1_2rpn.onnx \
-# --saveEngine=combine3modules_dynamic_shape_noscatter_fp16_zhito_2dsvt_1_2rpn.engine \
-# --memPoolSize=workspace:4096 --verbose --buildOnly --device=0 \
-# --tacticSources=+CUDNN,+CUBLAS,-CUBLAS_LT,+EDGE_MASK_CONVOLUTIONS 
+/home/zhenghu/Downloads/TensorRT-8.5.1.7.Linux.x86_64-gnu.cuda-11.8.cudnn8.6/TensorRT-8.5.1.7/bin/trtexec --onnx=combine3modules_dynamic_shape_noscatter_zhito_2dsvt_1_2rpn.onnx \
+--saveEngine=combine3modules_dynamic_shape_noscatter_fp16_zhito_2dsvt_1_2rpn.engine \
+--memPoolSize=workspace:4096 --verbose --buildOnly --device=0 \
+--tacticSources=+CUDNN,+CUBLAS,-CUBLAS_LT,+EDGE_MASK_CONVOLUTIONS 
 
 # # Unique operator is not support in TensorRT,need to implement oneself.
 # /home/zhenghu/Downloads/TensorRT-8.5.1.7.Linux.x86_64-gnu.cuda-11.8.cudnn8.6/TensorRT-8.5.1.7/bin/trtexec --onnx=./dsvt_blocks_zhito_2dsvt_1_2rpn.onnx \
