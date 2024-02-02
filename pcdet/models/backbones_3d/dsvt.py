@@ -7,6 +7,8 @@ import pdb
 import time
 from .unified_normalization import UN1d
 unified_normalization = False
+import numpy as np
+# from pcdet.models.dense_heads.detr_head import DETRHead
 class DSVT(nn.Module):
     '''Dynamic Sparse Voxel Transformer Backbone.
     Args:
@@ -163,6 +165,10 @@ class DSVT(nn.Module):
                     raise NotImplementedError
 
         batch_dict['pillar_features'] = batch_dict['voxel_features'] = output
+
+        # voxel_features_trt = torch.from_numpy(np.load('/home/zhenghu/DeepLearning/DSVT/tools/npy_file/dsvt_output_layer/dsvt_output_tensor.npy').reshape(-1, 128)).cuda()
+        # batch_dict['pillar_features'] = batch_dict['voxel_features'] = voxel_features_trt
+
         batch_dict['voxel_coords'] = voxel_info[f'voxel_coors_stage{self.stage_num - 1}']
         # pdb.set_trace()
         torch.cuda.synchronize()

@@ -162,7 +162,7 @@ def main():
     model.cuda()
     model.eval()
     pdb.set_trace()
-    with open('dsvt_zhito_2dsvt_1_2rpn.wts', 'w') as f:
+    with open('dsvt_zhito_2dsvt_1_2rpn_sparse_pre.wts', 'w') as f:
         f.write('{}\n'.format(len(model.state_dict().keys())))
         for k, v in model.state_dict().items():
             print('**'*10)

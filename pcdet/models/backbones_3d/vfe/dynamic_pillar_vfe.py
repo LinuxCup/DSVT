@@ -9,7 +9,8 @@ except Exception as e:
     pass
 
 from .vfe_template import VFETemplate
-
+import numpy as np
+import pdb
 
 class PFNLayerV2(nn.Module):
     def __init__(self,
@@ -182,6 +183,12 @@ class DynamicPillarVFE_3d(VFETemplate):
 
     def forward(self, batch_dict, **kwargs):
         points = batch_dict['points'] # (batch_idx, x, y, z, i, e)
+        # np.save('/home/zhenghu/DeepLearning/DSVT/tools/npy_file/vfe/vfe_intput_tensor.npy', points.detach().cpu().numpy())
+        # points = torch.from_numpy(np.load('/home/zhenghu/DeepLearning/DSVT/tools/npy_file/vfe/vfe_intput_tensor.npy').reshape(-1, 5)).cuda()
+
+        # pdb.set_trace()
+        # points_trt = torch.from_numpy(np.load('/home/zhenghu/DeepLearning/DSVT/tools/npy_file/vfe/vfe_intput_tensor.npy').reshape(-1, 4)).cuda()
+        # points = F.pad(points_trt,(1,0), 'constant', 0)
 
         points_coords = torch.floor((points[:, [1,2,3]] - self.point_cloud_range[[0,1,2]]) / self.voxel_size[[0,1,2]]).int()
         mask = ((points_coords >= 0) & (points_coords < self.grid_size[[0,1,2]])).all(dim=1)
@@ -228,5 +235,11 @@ class DynamicPillarVFE_3d(VFETemplate):
 
         batch_dict['pillar_features'] = batch_dict['voxel_features'] = features
         batch_dict['voxel_coords'] = voxel_coords
+        
+        # pdb.set_trace()
+        # voxel_features_trt = torch.from_numpy(np.load('/home/zhenghu/DeepLearning/DSVT/tools/npy_file/dsvt_input_layer/voxel_feats_zhito.npy').reshape(-1, 128)).cuda()
+        # voxel_coors_trt = torch.from_numpy(np.load('/home/zhenghu/DeepLearning/DSVT/tools/npy_file/dsvt_input_layer/voxel_coors_zhito.npy').reshape(-1, 4)).cuda()
+        # batch_dict['pillar_features'] = batch_dict['voxel_features'] = voxel_features_trt
+        # batch_dict['voxel_coords'] = voxel_coors_trt
 
         return batch_dict

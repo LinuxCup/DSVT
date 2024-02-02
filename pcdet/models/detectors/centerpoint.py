@@ -20,7 +20,7 @@ class CenterPoint(Detector3DTemplate):
         # batch_dict = self.module_list[3](batch_dict)
         # batch_dict = self.module_list[4](batch_dict)
         for cur_module in self.module_list:
-        #     # pdb.set_trace()
+            # pdb.set_trace()
             batch_dict = cur_module(batch_dict)
         #     torch.cuda.synchronize()
         #     t1 = time.time()

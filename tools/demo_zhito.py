@@ -104,7 +104,7 @@ class DemoDataset(DatasetTemplate):
     def output_result(self, result, index):
         
         ## init path and read label file
-        output_root = "./results/adam_2dsvt_1_2rpn_sparse_pre_threshold02"
+        output_root = "./results/adam_2dsvt_1_2rpn_sparse_pre_800_threshold05"
         label_file = (str(self.root_path) + self.label_file_list[index]).replace('\n','')
         result_file = Path(os.getcwd()).parent / (output_root + self.label_file_list[index]).replace('\n','')
         with open(label_file, 'r', encoding='utf-8') as j:
@@ -218,7 +218,7 @@ def main():
     model.eval()
     with torch.no_grad():
         for idx, data_dict in enumerate(demo_dataset):
-            # if idx < 5: # 5 40 71
+            # if idx < 207: # 5 40 71
             #     continue
             logger.info(f'Visualized sample index: \t{idx + 1}')
             data_dict = demo_dataset.collate_batch([data_dict])

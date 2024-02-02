@@ -1,18 +1,19 @@
 import copy
+from typing import Optional, List
 import numpy as np
 import torch
 from torch import nn
 import torch.nn.functional as F
 from torch.nn.init import kaiming_normal_
+from torch import nn, Tensor
+import pdb
+import time
 from ..model_utils.transfusion_utils import clip_sigmoid
-from ..model_utils.basic_block_2d import BasicBlock2D
-from ..model_utils.transfusion_utils import PositionEmbeddingLearned, TransformerDecoderLayer
-from .target_assigner.hungarian_assigner import HungarianAssigner3D
 from ...utils import loss_utils
 from ..model_utils import centernet_utils
 from ..model_utils import model_nms_utils
-import pdb
-import time
+from .target_assigner.hungarian_assigner import HungarianAssigner3D
+from ..model_utils.transfusion_utils import PositionEmbeddingLearned
 
 
 import matplotlib.pyplot as plt
@@ -28,10 +29,12 @@ def visualization_feature(feature):
             fig.colorbar(im, ax=ax)
     plt.show()
 
+
 class SeparateHead_Transfusion(nn.Module):
     def __init__(self, input_channels, head_channels, kernel_size, sep_head_dict, init_bias=-2.19, use_bias=False):
         super().__init__()
         self.sep_head_dict = sep_head_dict
+        # pdb.set_trace()
 
         for cur_name in self.sep_head_dict:
             output_channels = self.sep_head_dict[cur_name]['out_channels']
@@ -65,44 +68,20 @@ class SeparateHead_Transfusion(nn.Module):
         return ret_dict
 
 
-
-class TransFusionHead(nn.Module):
-    """
-        This module implements TransFusionHead.
-        The code is adapted from https://github.com/mit-han-lab/bevfusion/ with minimal modifications.
-    """
-    def __init__(
-        self,
-        model_cfg, input_channels, num_class, class_names, grid_size, point_cloud_range, voxel_size, predict_boxes_when_training=True,
-    ):
-        super(TransFusionHead, self).__init__()
-
-        self.grid_size = grid_size
-        self.point_cloud_range = point_cloud_range
-        self.voxel_size = voxel_size
-        if (model_cfg.get('DOWNSAMPLE_LAYER', None)):
-            self.voxel_size = [self.voxel_size[0] * 2, self.voxel_size[1] * 2, self.voxel_size[2]]
-            self.grid_size = np.array([round(self.grid_size[0] / 2), round(self.grid_size[1] / 2), self.grid_size[2]])
-        self.num_classes = num_class
-
+class DETRHead(nn.Module):
+    def __init__(self, model_cfg, d_model, nhead, dim_feedforward=2048, dropout=0.1,
+                 activation="relu") -> None:
+        super().__init__()
         self.model_cfg = model_cfg
-        self.feature_map_stride = self.model_cfg.TARGET_ASSIGNER_CONFIG.get('FEATURE_MAP_STRIDE', None)
-        self.dataset_name = self.model_cfg.TARGET_ASSIGNER_CONFIG.get('DATASET', 'nuScenes')
+        self.encoder = DSVT_Encoder(d_model, nhead, dim_feedforward, dropout,
+                                        activation)
 
-        hidden_channel=self.model_cfg.HIDDEN_CHANNEL
-        self.num_proposals = self.model_cfg.NUM_PROPOSALS
-        self.bn_momentum = self.model_cfg.BN_MOMENTUM
-        self.nms_kernel_size = self.model_cfg.NMS_KERNEL_SIZE
+        # pdb.set_trace()
+        heads = copy.deepcopy(self.model_cfg.SEPARATE_HEAD_CFG.HEAD_DICT)
+        heads['heatmap'] = dict(out_channels=self.model_cfg.NUM_CLASSES, num_conv=self.model_cfg.NUM_HM_CONV)
+        self.prediction_head = SeparateHead_Transfusion(d_model, 64, 1, heads, use_bias=True)
+        self.bbox_assigner = HungarianAssigner3D(**self.model_cfg.TARGET_ASSIGNER_CONFIG.HUNGARIAN_ASSIGNER)
 
-        self.query_radius = self.model_cfg.get('QUERY_RADIUS', 20)
-        self.query_range = torch.arange(-self.query_radius, self.query_radius+1)
-        self.query_r_coor_x, self.query_r_coor_y = torch.meshgrid(self.query_range, self.query_range) 
-
-        num_heads = self.model_cfg.NUM_HEADS
-        dropout = self.model_cfg.DROPOUT
-        activation = self.model_cfg.ACTIVATION
-        ffn_channel = self.model_cfg.FFN_CHANNEL
-        bias = self.model_cfg.get('USE_BIAS_BEFORE_NORM', False)
 
         loss_cls = self.model_cfg.LOSS_CONFIG.LOSS_CLS
         self.use_sigmoid_cls = loss_cls.get("use_sigmoid", False)
@@ -112,229 +91,104 @@ class TransFusionHead(nn.Module):
         self.loss_cls_weight = self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['cls_weight']
         self.loss_bbox = loss_utils.L1Loss()
         self.loss_bbox_weight = self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['bbox_weight']
-        self.loss_heatmap = loss_utils.GaussianFocalLoss()
-        self.loss_heatmap_weight = self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['hm_weight']
+        # self.loss_heatmap = loss_utils.GaussianFocalLoss()
+        # self.loss_heatmap_weight = self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['hm_weight']
         self.loss_iou_rescore_weight = self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['loss_iou_rescore_weight']
+        self.dataset_name = self.model_cfg.TARGET_ASSIGNER_CONFIG.get('DATASET', 'zhito')
 
+
+
+        self.feature_map_stride = self.model_cfg.TARGET_ASSIGNER_CONFIG.get('FEATURE_MAP_STRIDE', None)
+        self.voxel_size = [ 0.32, 0.32, 10]
+        self.grid_size = np.array([384, 264,   1])
+        self.point_cloud_range = [-61.44, -42.24, -5.0, 61.44, 42.24, 5.0]
+        if (model_cfg.get('DOWNSAMPLE_LAYER', None)):
+            self.voxel_size = [self.voxel_size[0] * 2, self.voxel_size[1] * 2, self.voxel_size[2]]
+            self.grid_size = np.array([round(self.grid_size[0] / 2), round(self.grid_size[1] / 2), self.grid_size[2]])
+        self.num_classes = 6
         self.code_size = 8
 
-        # a shared convolution
-        stride = self.model_cfg.get('STRIDE', 1)
-        self.shared_conv = nn.Conv2d(in_channels=input_channels,out_channels=hidden_channel,kernel_size=3,stride = stride,padding=1)
-        layers = []
-        layers.append(BasicBlock2D(hidden_channel,hidden_channel, kernel_size=3,padding=1,bias=True))
-        layers.append(nn.Conv2d(in_channels=hidden_channel,out_channels=num_class,kernel_size=3,padding=1))
-        self.heatmap_head = nn.Sequential(*layers)
-        self.class_encoding = nn.Conv1d(num_class, hidden_channel, 1)
 
-        # transformer decoder layers for object query with LiDAR feature
-        # parameters: 128 8 256 0.1 'relu'
-        self.decoder = TransformerDecoderLayer(hidden_channel, num_heads, ffn_channel, dropout, activation,
-                self_posembed=PositionEmbeddingLearned(2, hidden_channel),
-                cross_posembed=PositionEmbeddingLearned(2, hidden_channel),
-            )
-        # Prediction Head
-        heads = copy.deepcopy(self.model_cfg.SEPARATE_HEAD_CFG.HEAD_DICT)
-        heads['heatmap'] = dict(out_channels=self.num_classes, num_conv=self.model_cfg.NUM_HM_CONV)
-        self.prediction_head = SeparateHead_Transfusion(hidden_channel, 64, 1, heads, use_bias=True)
-
-        self.init_weights()
-        self.bbox_assigner = HungarianAssigner3D(**self.model_cfg.TARGET_ASSIGNER_CONFIG.HUNGARIAN_ASSIGNER)
-
-        # Position Embedding for Cross-Attention, which is re-used during training
-        x_size = self.grid_size[0] // self.feature_map_stride
-        y_size = self.grid_size[1] // self.feature_map_stride
-        self.bev_pos = self.create_2D_grid(x_size, y_size)
-
-        self.forward_ret_dict = {}
-
-    def create_2D_grid(self, x_size, y_size):
-        meshgrid = [[0, x_size - 1, x_size], [0, y_size - 1, y_size]]
-        # NOTE: modified
-        batch_x, batch_y = torch.meshgrid(
-            *[torch.linspace(it[0], it[1], it[2]) for it in meshgrid]
-        )
-        batch_x = batch_x + 0.5
-        batch_y = batch_y + 0.5
-        coord_base = torch.cat([batch_x[None], batch_y[None]], dim=0)[None]
-        coord_base = coord_base.view(1, 2, -1).permute(0, 2, 1)
-        return coord_base
-
-    def init_weights(self):
-        # initialize transformer
-        for m in self.decoder.parameters():
-            if m.dim() > 1:
-                nn.init.xavier_uniform_(m)
-        if hasattr(self, "query"):
-            nn.init.xavier_normal_(self.query)
-        self.init_bn_momentum()
-
-    def init_bn_momentum(self):
-        for m in self.modules():
-            if isinstance(m, (nn.BatchNorm2d, nn.BatchNorm1d)):
-                m.momentum = self.bn_momentum
-
-    def predict(self, inputs):
-        # torch.Size([1, 384, 192, 132])
-        batch_size = inputs.shape[0]
-        lidar_feat = self.shared_conv(inputs)
-
-        lidar_feat_flatten = lidar_feat.view(
-            batch_size, lidar_feat.shape[1], -1
-        )
-        bev_pos = self.bev_pos.repeat(batch_size, 1, 1).to(lidar_feat.device)
-
-        # query initialization
-        dense_heatmap = self.heatmap_head(lidar_feat)
-        heatmap = dense_heatmap.detach().sigmoid()
-        # pdb.set_trace()
-        # visualization_feature(dense_heatmap[0].sigmoid().permute(0,2,1).squeeze(dim=0).cpu())
-        x_grid, y_grid = heatmap.shape[-2:]
-        padding = self.nms_kernel_size // 2
-        local_max = torch.zeros_like(heatmap)
-        local_max_inner = F.max_pool2d(
-            heatmap, kernel_size=self.nms_kernel_size, stride=1, padding=0
-        )
-        local_max[:, :, padding:(-padding), padding:(-padding)] = local_max_inner
-        # for Pedestrian & Traffic_cone in nuScenes
-        if self.dataset_name == "nuScenes":
-            local_max[ :, 8, ] = F.max_pool2d(heatmap[:, 8], kernel_size=1, stride=1, padding=0)
-            local_max[ :, 9, ] = F.max_pool2d(heatmap[:, 9], kernel_size=1, stride=1, padding=0)
-        # for Pedestrian & Cyclist in Waymo
-        elif self.dataset_name == "Waymo":
-            local_max[ :, 1, ] = F.max_pool2d(heatmap[:, 1], kernel_size=1, stride=1, padding=0)
-            local_max[ :, 2, ] = F.max_pool2d(heatmap[:, 2], kernel_size=1, stride=1, padding=0)
-        # for zhito dataset
-        elif self.dataset_name == "Zhito":
-            local_max[ :, 3, ] = F.max_pool2d(heatmap[:, 3], kernel_size=1, stride=1, padding=0)
-            local_max[ :, 4, ] = F.max_pool2d(heatmap[:, 4], kernel_size=1, stride=1, padding=0)
-            local_max[ :, 5, ] = F.max_pool2d(heatmap[:, 5], kernel_size=1, stride=1, padding=0)
-        heatmap = heatmap * (heatmap == local_max)
-        # pdb.set_trace()
-        # visualization_feature(heatmap[0].permute(0,2,1).squeeze(dim=0).cpu())
-        heatmap = heatmap.view(batch_size, heatmap.shape[1], -1)
- 
-        # top num_proposals among all classes
-        top_proposals = heatmap.view(batch_size, -1).argsort(dim=-1, descending=True)[
-            ..., : self.num_proposals
-        ]
-
-
-        # heatmap_flatten = heatmap.view(-1)
-        # heatmap_flatten_idx = torch.nonzero(heatmap_flatten > 1e-3)
-        # heatmap_flatten_val = torch.zeros(152064, device=heatmap_flatten.device)
-        # heatmap_flatten_val_ = heatmap_flatten.index_select(dim = 0, index=heatmap_flatten_idx.squeeze(1))
-        # heatmap_flatten_val[:heatmap_flatten_val_.shape[0]] = heatmap_flatten_val_
-        # top_proposals = torch.zeros(500, dtype=torch.long ,device=heatmap_flatten_val.device)
-        # top_proposals[..., : 500] = heatmap_flatten_val[:10106].argsort(dim=-1, descending=True)[..., : 500]
-        # top_proposals[:heatmap_flatten_idx.shape[0]] = heatmap_flatten_idx.squeeze(1)[top_proposals[:heatmap_flatten_idx.shape[0]]]
-        # top_proposals = top_proposals.view(1,-1)
-        # # pdb.set_trace()
-        # # np.save('./heatmap.npy', heatmap.detach().cpu().numpy())
-
-
-
-        top_proposals_class = top_proposals // heatmap.shape[-1]
-        top_proposals_index = top_proposals % heatmap.shape[-1]
-        # tensor([[ 0,  4],
-        # [ 0, 36]], device='cuda:0')
-
-        query_feat = lidar_feat_flatten.gather(
-            index=top_proposals_index[:, None, :].expand(-1, lidar_feat_flatten.shape[1], -1),
-            dim=-1,
-        )
-        # pdb.set_trace()
-        self.query_labels = top_proposals_class
-
-        # add category embedding
-        one_hot = F.one_hot(top_proposals_class, num_classes=self.num_classes).permute(0, 2, 1)
+        # self.downsampe_layer = nn.Conv2d(in_channels=128,out_channels=128,kernel_size=3,stride = 2,padding=1, bias=False)
+        # self.downsampe_layer = nn.Sequential(
+        #     nn.Conv2d(in_channels=128,out_channels=128,kernel_size=3,stride = 2,padding=1, bias=False),
+        #     nn.BatchNorm2d(128),
+        #     nn.ReLU(),
+        # )
         
-        query_cat_encoding = self.class_encoding(one_hot.float())
-        query_feat += query_cat_encoding
+        self.posembed=PositionEmbeddingLearned(2, 128)
 
-        query_pos = bev_pos.gather(
-            index=top_proposals_index[:, None, :].permute(0, 2, 1).expand(-1, -1, bev_pos.shape[-1]),
-            dim=1,
-        )
+        # self.query_embed = nn.Embedding(800, 128)
+        self.query_embed = None
+        self.tgt = nn.Parameter(torch.rand(800, 128))
 
+        self._reset_parameters()
 
-        # compute local key 
-        top_proposals_x = top_proposals_index // x_grid # bs, num_proposals
-        top_proposals_y = top_proposals_index % y_grid # bs, num_proposals
-        
-        # bs, num_proposal, radius * 2 + 1, radius * 2 + 1
-        top_proposals_key_x = top_proposals_x[:, :, None, None] + self.query_r_coor_x[None, None, :, :].to(top_proposals.device)
-        top_proposals_key_y = top_proposals_y[:, :, None, None] + self.query_r_coor_y[None, None, :, :].to(top_proposals.device)
-        # bs, num_proposals, key_num
-        top_proposals_key_index = top_proposals_key_x.view(batch_size, top_proposals_key_x.shape[1], -1) * x_grid + top_proposals_key_y.view(batch_size, top_proposals_key_y.shape[1], -1)
-        key_mask = (top_proposals_key_index < 0) + (top_proposals_key_index >= (x_grid * y_grid))
-        top_proposals_key_index = torch.clamp(top_proposals_key_index, min=0, max=x_grid * y_grid-1)
-        num_proposals = top_proposals_key_index.shape[1]
-        key_feat = lidar_feat_flatten.gather(index=top_proposals_key_index.view(batch_size, 1, -1).expand(-1, lidar_feat_flatten.shape[1], -1), dim=-1)
-        key_feat = key_feat.view(batch_size, lidar_feat_flatten.shape[1], num_proposals, -1) 
-        key_pos = bev_pos.gather(index=top_proposals_key_index.view(batch_size, 1, -1).permute(0, 2, 1).expand(-1, -1, bev_pos.shape[-1]), dim=1)
-        key_pos = key_pos.view(batch_size, num_proposals, -1, bev_pos.shape[-1])
-        key_feat = key_feat.permute(0, 2, 1, 3).reshape(batch_size*num_proposals, lidar_feat_flatten.shape[1], -1)
-        key_pos = key_pos.view(-1, key_pos.shape[2], key_pos.shape[-1])
-        key_padding_mask = key_mask.view(-1, key_mask.shape[-1])
-
-        query_feat_T = query_feat.permute(0, 2, 1).reshape(batch_size*num_proposals, -1, 1)
-        query_pos_T = query_pos.view(-1, 1, query_pos.shape[-1])
+    def _reset_parameters(self):
         # pdb.set_trace()
-        # (Pdb) query_feat_T.shape
-        # torch.Size([500, 128, 1])
-        # (Pdb) key_feat.shape
-        # torch.Size([500, 128, 441])
-        # (Pdb) query_pos_T.shape
-        # torch.Size([500, 1, 2])
-        # (Pdb) key_pos.shape
-        # torch.Size([500, 441, 2])
-        # (Pdb) key_padding_mask.shape
-        # torch.Size([500, 441])
-        # torch.save({"query":query_feat_T, "key":key_feat, "query_pos":query_pos_T, "key_pos":key_pos, "key_padding_mask":key_padding_mask}, "transfusion_head_decoder.pth")
-        
-        query_feat_T = self.decoder(
-            query_feat_T, key_feat, query_pos_T, key_pos, key_padding_mask
-        )
-        query_feat = query_feat_T.reshape(batch_size, num_proposals, 128).permute(0, 2, 1)
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
 
-        # torch.Size([1, 128, 500])
-        res_layer = self.prediction_head(query_feat)
-        res_layer["center"] = res_layer["center"] + query_pos.permute(0, 2, 1)
-
-        res_layer["query_heatmap_score"] = heatmap.gather(
-            index=top_proposals_index[:, None, :].expand(-1, self.num_classes, -1),
-            dim=-1,
-        )
-        res_layer["dense_heatmap"] = dense_heatmap #torch.Size([1, 6, 192, 132])
+    def dense2sequence(self, feautre):
         # pdb.set_trace()
-        # visualization_feature(res_layer['heatmap'][0].permute(0,2,1).squeeze(dim=0).cpu())
+        # feautre = self.downsampe_layer(feautre) #torch.Size([1, 128, 132, 192])
+        # bs = feautre.size(0)
+        # pdb.set_trace()
 
-        return res_layer
+        x_grid, y_grid = feautre.shape[-2:]
+
+        feautre_flatten = feautre.flatten(2,3)
+        feature_abs = feautre_flatten.abs().sum(dim=1)
+        feature_abs_flatten_idx = torch.nonzero(feature_abs > 0.)
+        feautre_flatten_val = feautre_flatten.index_select(dim = 2, index=feature_abs_flatten_idx.permute(1,0)[1,...])
+
+        top_proposals_x = feature_abs_flatten_idx.permute(1,0)[1,...] // x_grid # bs, num_proposals
+        top_proposals_y = feature_abs_flatten_idx.permute(1,0)[1,...] % y_grid # bs, num_proposals
+
+        # pdb.set_trace()
+        pos_embed = self.posembed(torch.cat([top_proposals_x.unsqueeze(1), top_proposals_y.unsqueeze(1)],dim=1).unsqueeze(0).float())
+        
+        return feautre_flatten_val, pos_embed
+
 
     def forward(self, batch_dict):
-        try:
-            feats = batch_dict['spatial_features_2d']
-        except:
-            feats = batch_dict['spatial_features'] #torch.Size([1, 128, 264, 384])
-        # convert [bs,y,x] -> [bs,x,y] torch.Size([1, 6, 192, 132])
-        feats = feats.permute(0,1,3,2).contiguous()
+        feature = batch_dict['spatial_features']
+        feature = feature.permute(0,1,3,2).contiguous()
+        bs = feature.size(0)
 
-        t0 = time.time()
-        res = self.predict(feats)
+        res_layer = []
+        for i in range(bs):
+            feautre_flatten_val, feature_pos_embed = self.dense2sequence(feature[i,...].unsqueeze(0))
+            query_embed = None
+            tgt = self.tgt.unsqueeze(1)
+            # tgt = torch.zeros_like(query_embed)
+            # pdb.set_trace()
+            res_layer.append(self.encoder(tgt, feautre_flatten_val.permute(2,0,1), pos=feature_pos_embed.permute(2,0,1), query_pos=query_embed))
+
+        res_layer = torch.cat(res_layer, dim=1)
+        res_layer = res_layer.permute(1, 2, 0)
+        #[1 128 800]
+        res_layer = self.prediction_head(res_layer)
+        
+        # pdb.set_trace()
         if not self.training:
-            bboxes = self.get_bboxes(res)
+            bboxes = self.get_bboxes(res_layer)
             batch_dict['final_box_dicts'] = bboxes
+            # pdb.set_trace()
         else:
             gt_boxes = batch_dict['gt_boxes']
             gt_bboxes_3d = gt_boxes[...,:-1]
             gt_labels_3d =  gt_boxes[...,-1].long() - 1
-            loss, tb_dict = self.loss(gt_bboxes_3d, gt_labels_3d, res)
+            loss, tb_dict = self.loss(gt_bboxes_3d, gt_labels_3d, res_layer)
+
+
             batch_dict['loss'] = loss
             batch_dict['tb_dict'] = tb_dict
-        t1 = time.time()
-        # print(t1- t0)
+            # pdb.set_trace()
+
         return batch_dict
+
 
     def get_targets(self, gt_bboxes_3d, gt_labels_3d, pred_dicts):
         assign_results = []
@@ -376,6 +230,7 @@ class TransFusionHead(nn.Module):
             vel = None
 
         boxes_dict = self.decode_bbox(score, rot, dim, center, height, vel)
+        # pdb.set_trace()
         bboxes_tensor = boxes_dict[0]["pred_boxes"]
         gt_bboxes_tensor = gt_bboxes_3d.to(score.device)
 
@@ -422,6 +277,7 @@ class TransFusionHead(nn.Module):
         target_assigner_cfg = self.model_cfg.TARGET_ASSIGNER_CONFIG
         feature_map_size = (self.grid_size[:2] // self.feature_map_stride) 
         heatmap = gt_bboxes_3d.new_zeros(self.num_classes, feature_map_size[1], feature_map_size[0])
+        # pdb.set_trace()
         for idx in range(len(gt_bboxes_3d)):
             width = gt_bboxes_3d[idx][3]
             length = gt_bboxes_3d[idx][4]
@@ -439,10 +295,87 @@ class TransFusionHead(nn.Module):
                 center_int = center.to(torch.int32)
                 centernet_utils.draw_gaussian_to_heatmap(heatmap[gt_labels_3d[idx]], center_int, radius)
 
+        # pdb.set_trace()
+        # visualization_feature(heatmap.squeeze(dim=0).cpu())
         # convert [bs,y,x] -> [bs,x,y] torch.Size([1, 6, 192, 132])
         heatmap = heatmap.permute(0,2,1)
         mean_iou = ious[pos_inds].sum() / max(len(pos_inds), 1)
         return (labels[None], label_weights[None], bbox_targets[None], bbox_weights[None], int(pos_inds.shape[0]), float(mean_iou), heatmap[None])
+
+    def encode_bbox(self, bboxes):
+        code_size = self.code_size
+        targets = torch.zeros([bboxes.shape[0], code_size]).to(bboxes.device)
+        targets[:, 0] = (bboxes[:, 0] - self.point_cloud_range[0]) / (self.feature_map_stride * self.voxel_size[0])
+        targets[:, 1] = (bboxes[:, 1] - self.point_cloud_range[1]) / (self.feature_map_stride * self.voxel_size[1])
+        targets[:, 3:6] = bboxes[:, 3:6].log()
+        targets[:, 2] = bboxes[:, 2] + 0.5 * bboxes[:, 5]
+        targets[:, 6] = torch.sin(bboxes[:, 6])
+        targets[:, 7] = torch.cos(bboxes[:, 6])
+        if code_size == 10:
+            targets[:, 8:10] = bboxes[:, 7:]
+        return targets
+
+    def decode_bbox(self, heatmap, rot, dim, center, height, vel, filter=False):
+        
+        post_process_cfg = self.model_cfg.POST_PROCESSING
+        score_thresh = post_process_cfg.SCORE_THRESH
+        post_center_range = post_process_cfg.POST_CENTER_RANGE
+        post_center_range = torch.tensor(post_center_range).cuda().float()
+        # class label
+        final_preds = heatmap.max(1, keepdims=False).indices
+        final_scores = heatmap.max(1, keepdims=False).values
+
+        center[:, 0, :] = center[:, 0, :] * self.feature_map_stride * self.voxel_size[0] + self.point_cloud_range[0]
+        center[:, 1, :] = center[:, 1, :] * self.feature_map_stride * self.voxel_size[1] + self.point_cloud_range[1]
+        # pdb.set_trace()
+        dim = dim.exp()
+        height = height - dim[:, 2:3, :] * 0.5 
+        rots, rotc = rot[:, 0:1, :], rot[:, 1:2, :]
+        rot = torch.atan2(rots, rotc)
+
+        if vel is None:
+            final_box_preds = torch.cat([center, height, dim, rot], dim=1).permute(0, 2, 1)
+        else:
+            final_box_preds = torch.cat([center, height, dim, rot, vel], dim=1).permute(0, 2, 1)
+
+        predictions_dicts = []
+        for i in range(heatmap.shape[0]):
+            boxes3d = final_box_preds[i]
+            scores = final_scores[i]
+            labels = final_preds[i]
+            predictions_dict = {
+                'pred_boxes': boxes3d,
+                'pred_scores': scores,
+                'pred_labels': labels
+            }
+            predictions_dicts.append(predictions_dict)
+
+        if filter is False:
+            return predictions_dicts
+
+        thresh_mask = final_scores > score_thresh        
+        mask = (final_box_preds[..., :3] >= post_center_range[:3]).all(2)
+        mask &= (final_box_preds[..., :3] <= post_center_range[3:]).all(2)
+
+        predictions_dicts = []
+        # pdb.set_trace()
+        for i in range(heatmap.shape[0]):
+            cmask = mask[i, :]
+            cmask &= thresh_mask[i]
+
+            boxes3d = final_box_preds[i, cmask]
+            scores = final_scores[i, cmask]
+            labels = final_preds[i, cmask]
+            predictions_dict = {
+                'pred_boxes': boxes3d,
+                'pred_scores': scores,
+                'pred_labels': labels,
+                'cmask': cmask,
+            }
+
+            predictions_dicts.append(predictions_dict)
+
+        return predictions_dicts
 
     def loss(self, gt_bboxes_3d, gt_labels_3d, pred_dicts, **kwargs):
 
@@ -452,12 +385,12 @@ class TransFusionHead(nn.Module):
         loss_all = 0
 
         # compute heatmap loss
-        loss_heatmap = self.loss_heatmap(
-            clip_sigmoid(pred_dicts["dense_heatmap"]),
-            heatmap,
-        ).sum() / max(heatmap.eq(1).float().sum().item(), 1)
-        loss_dict["loss_heatmap"] = loss_heatmap.item() * self.loss_heatmap_weight
-        loss_all += loss_heatmap * self.loss_heatmap_weight
+        # loss_heatmap = self.loss_heatmap(
+        #     clip_sigmoid(pred_dicts["dense_heatmap"]),
+        #     heatmap,
+        # ).sum() / max(heatmap.eq(1).float().sum().item(), 1)
+        # loss_dict["loss_heatmap"] = loss_heatmap.item() * self.loss_heatmap_weight
+        # loss_all += loss_heatmap * self.loss_heatmap_weight
         # pdb.set_trace()
         # visualization_feature(heatmap[0].permute(0,2,1).squeeze(dim=0).cpu())
 
@@ -481,6 +414,7 @@ class TransFusionHead(nn.Module):
 
         loss_dict["loss_cls"] = loss_cls.item() * self.loss_cls_weight
         loss_dict["loss_bbox"] = loss_bbox.item() * self.loss_bbox_weight
+        # pdb.set_trace()
         loss_all = loss_all + loss_cls * self.loss_cls_weight + loss_bbox * self.loss_bbox_weight
 
         if "iou" in pred_dicts.keys():
@@ -517,81 +451,10 @@ class TransFusionHead(nn.Module):
 
         loss_dict[f"matched_ious"] = loss_cls.new_tensor(matched_ious)
         loss_dict['loss_trans'] = loss_all
+        # pdb.set_trace()
 
         return loss_all,loss_dict
 
-    def encode_bbox(self, bboxes):
-        code_size = self.code_size
-        targets = torch.zeros([bboxes.shape[0], code_size]).to(bboxes.device)
-        targets[:, 0] = (bboxes[:, 0] - self.point_cloud_range[0]) / (self.feature_map_stride * self.voxel_size[0])
-        targets[:, 1] = (bboxes[:, 1] - self.point_cloud_range[1]) / (self.feature_map_stride * self.voxel_size[1])
-        targets[:, 3:6] = bboxes[:, 3:6].log()
-        targets[:, 2] = bboxes[:, 2] + 0.5 * bboxes[:, 5]
-        targets[:, 6] = torch.sin(bboxes[:, 6])
-        targets[:, 7] = torch.cos(bboxes[:, 6])
-        if code_size == 10:
-            targets[:, 8:10] = bboxes[:, 7:]
-        return targets
-
-    def decode_bbox(self, heatmap, rot, dim, center, height, vel, filter=False):
-        
-        post_process_cfg = self.model_cfg.POST_PROCESSING
-        score_thresh = post_process_cfg.SCORE_THRESH
-        post_center_range = post_process_cfg.POST_CENTER_RANGE
-        post_center_range = torch.tensor(post_center_range).cuda().float()
-        # class label
-        final_preds = heatmap.max(1, keepdims=False).indices
-        final_scores = heatmap.max(1, keepdims=False).values
-
-        center[:, 0, :] = center[:, 0, :] * self.feature_map_stride * self.voxel_size[0] + self.point_cloud_range[0]
-        center[:, 1, :] = center[:, 1, :] * self.feature_map_stride * self.voxel_size[1] + self.point_cloud_range[1]
-        dim = dim.exp()
-        height = height - dim[:, 2:3, :] * 0.5 
-        rots, rotc = rot[:, 0:1, :], rot[:, 1:2, :]
-        rot = torch.atan2(rots, rotc)
-
-        if vel is None:
-            final_box_preds = torch.cat([center, height, dim, rot], dim=1).permute(0, 2, 1)
-        else:
-            final_box_preds = torch.cat([center, height, dim, rot, vel], dim=1).permute(0, 2, 1)
-
-        predictions_dicts = []
-        for i in range(heatmap.shape[0]):
-            boxes3d = final_box_preds[i]
-            scores = final_scores[i]
-            labels = final_preds[i]
-            predictions_dict = {
-                'pred_boxes': boxes3d,
-                'pred_scores': scores,
-                'pred_labels': labels
-            }
-            predictions_dicts.append(predictions_dict)
-
-        if filter is False:
-            return predictions_dicts
-
-        thresh_mask = final_scores > score_thresh        
-        mask = (final_box_preds[..., :3] >= post_center_range[:3]).all(2)
-        mask &= (final_box_preds[..., :3] <= post_center_range[3:]).all(2)
-
-        predictions_dicts = []
-        for i in range(heatmap.shape[0]):
-            cmask = mask[i, :]
-            cmask &= thresh_mask[i]
-
-            boxes3d = final_box_preds[i, cmask]
-            scores = final_scores[i, cmask]
-            labels = final_preds[i, cmask]
-            predictions_dict = {
-                'pred_boxes': boxes3d,
-                'pred_scores': scores,
-                'pred_labels': labels,
-                'cmask': cmask,
-            }
-
-            predictions_dicts.append(predictions_dict)
-
-        return predictions_dicts
 
     def get_bboxes(self, preds_dicts):
 
@@ -632,7 +495,7 @@ class TransFusionHead(nn.Module):
         batch_dim = preds_dicts["dim"]
         batch_rot = preds_dicts["rot"]
         batch_vel = None
-        # pdb.set_trace()
+        pdb.set_trace()
         # visualization_feature(preds_dicts['dense_heatmap'][0].permute(0,2,1).sigmoid().squeeze(dim=0).cpu())
         if "vel" in preds_dicts:
             batch_vel = preds_dicts["vel"]
@@ -705,3 +568,160 @@ class TransFusionHead(nn.Module):
             new_ret_dict[k]['pred_labels'] = new_ret_dict[k]['pred_labels'].int() + 1
 
         return new_ret_dict 
+
+
+
+class DSVT_Encoder(nn.Module):
+
+    def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1,
+                 activation="relu", batch_first=True, mlp_dropout=0):
+        super().__init__()
+        self.norm = nn.LayerNorm(d_model)
+        self.num_layers = 1
+        self.return_intermediate = False
+    
+        decoder_layer = TransformerDecoderLayer(d_model, nhead, dim_feedforward, dropout, activation)
+        self.layers = _get_clones(decoder_layer, self.num_layers)
+        
+
+
+    def forward(self, tgt, memory,
+                tgt_mask: Optional[Tensor] = None,
+                memory_mask: Optional[Tensor] = None,
+                tgt_key_padding_mask: Optional[Tensor] = None,
+                memory_key_padding_mask: Optional[Tensor] = None,
+                pos: Optional[Tensor] = None,
+                query_pos: Optional[Tensor] = None):
+        output = tgt
+
+        intermediate = []
+        # pdb.set_trace()
+
+        for layer in self.layers:
+            # pdb.set_trace()
+            output = layer(output, memory, tgt_mask=tgt_mask,
+                           memory_mask=memory_mask,
+                           tgt_key_padding_mask=tgt_key_padding_mask,
+                           memory_key_padding_mask=memory_key_padding_mask,
+                           pos=pos, query_pos=query_pos)
+            if self.return_intermediate:
+                intermediate.append(self.norm(output))
+
+        if self.norm is not None:
+            output = self.norm(output)
+            if self.return_intermediate:
+                intermediate.pop()
+                intermediate.append(output)
+
+        if self.return_intermediate:
+            return torch.stack(intermediate)
+
+        return output
+
+
+
+def _get_activation_fn(activation):
+    """Return an activation function given a string"""
+    if activation == "relu":
+        return torch.nn.functional.relu
+    if activation == "gelu":
+        return torch.nn.functional.gelu
+    if activation == "glu":
+        return torch.nn.functional.glu
+    raise RuntimeError(F"activation should be relu/gelu, not {activation}.")
+
+
+class TransformerDecoderLayer(nn.Module):
+
+    def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1,
+                 activation="relu", normalize_before=False):
+        super().__init__()
+        self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
+        self.multihead_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
+        # Implementation of Feedforward model
+        self.linear1 = nn.Linear(d_model, dim_feedforward)
+        self.dropout = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(dim_feedforward, d_model)
+
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        self.norm3 = nn.LayerNorm(d_model)
+        self.dropout1 = nn.Dropout(dropout)
+        self.dropout2 = nn.Dropout(dropout)
+        self.dropout3 = nn.Dropout(dropout)
+
+        self.activation = _get_activation_fn(activation)
+        self.normalize_before = normalize_before
+
+    def with_pos_embed(self, tensor, pos: Optional[Tensor]):
+        return tensor if pos is None else tensor + pos
+
+    def forward_post(self, tgt, memory,
+                     tgt_mask: Optional[Tensor] = None,
+                     memory_mask: Optional[Tensor] = None,
+                     tgt_key_padding_mask: Optional[Tensor] = None,
+                     memory_key_padding_mask: Optional[Tensor] = None,
+                     pos: Optional[Tensor] = None,
+                     query_pos: Optional[Tensor] = None):
+        q = k = self.with_pos_embed(tgt, query_pos)
+        tgt2 = self.self_attn(q, k, value=tgt, attn_mask=tgt_mask,key_padding_mask=tgt_key_padding_mask)[0]
+        tgt = tgt + self.dropout1(tgt2)
+        tgt = self.norm1(tgt)
+        # pdb.set_trace()
+        # query = torch.zeros([1,100,128], device=q.device, requires_grad=True)
+        # tgt2 = self.multihead_attn(query=query,key=memory.flatten(0,1).unsqueeze(0),value=memory.flatten(0,1).unsqueeze(0), attn_mask=memory_mask,key_padding_mask=memory_key_padding_mask.flatten(0).unsqueeze(0))
+        # torch.Size([1, 100, 128])
+
+        # memory = F.max_pool1d(memory.permute(2,1,0), kernel_size=2, stride=2, padding=0).permute(2,1,0)
+        # memory_key_padding_mask = F.max_pool1d(memory_key_padding_mask.float(), kernel_size=2, stride=2, padding=0).bool()
+
+        tgt2 = self.multihead_attn(query=self.with_pos_embed(tgt, query_pos),
+                                   key=self.with_pos_embed(memory, pos),
+                                   value=memory, attn_mask=memory_mask,
+                                   key_padding_mask=memory_key_padding_mask)[0]
+        tgt = tgt + self.dropout2(tgt2)
+        tgt = self.norm2(tgt)
+        tgt2 = self.linear2(self.dropout(self.activation(self.linear1(tgt))))
+        tgt = tgt + self.dropout3(tgt2)
+        tgt = self.norm3(tgt)
+        return tgt
+
+    def forward_pre(self, tgt, memory,
+                    tgt_mask: Optional[Tensor] = None,
+                    memory_mask: Optional[Tensor] = None,
+                    tgt_key_padding_mask: Optional[Tensor] = None,
+                    memory_key_padding_mask: Optional[Tensor] = None,
+                    pos: Optional[Tensor] = None,
+                    query_pos: Optional[Tensor] = None):
+        tgt2 = self.norm1(tgt)
+        q = k = self.with_pos_embed(tgt2, query_pos)
+        tgt2 = self.self_attn(q, k, value=tgt2, attn_mask=tgt_mask,
+                              key_padding_mask=tgt_key_padding_mask)[0]
+        tgt = tgt + self.dropout1(tgt2)
+        tgt2 = self.norm2(tgt)
+        tgt2 = self.multihead_attn(query=self.with_pos_embed(tgt2, query_pos),
+                                   key=self.with_pos_embed(memory, pos),
+                                   value=memory, attn_mask=memory_mask,
+                                   key_padding_mask=memory_key_padding_mask)[0]
+        tgt = tgt + self.dropout2(tgt2)
+        tgt2 = self.norm3(tgt)
+        tgt2 = self.linear2(self.dropout(self.activation(self.linear1(tgt2))))
+        tgt = tgt + self.dropout3(tgt2)
+        return tgt
+
+    def forward(self, tgt, memory,
+                tgt_mask: Optional[Tensor] = None,
+                memory_mask: Optional[Tensor] = None,
+                tgt_key_padding_mask: Optional[Tensor] = None,
+                memory_key_padding_mask: Optional[Tensor] = None,
+                pos: Optional[Tensor] = None,
+                query_pos: Optional[Tensor] = None):
+        if self.normalize_before:
+            return self.forward_pre(tgt, memory, tgt_mask, memory_mask,
+                                    tgt_key_padding_mask, memory_key_padding_mask, pos, query_pos)
+        return self.forward_post(tgt, memory, tgt_mask, memory_mask,
+                                 tgt_key_padding_mask, memory_key_padding_mask, pos, query_pos)
+
+
+def _get_clones(module, N):
+    return nn.ModuleList([copy.deepcopy(module) for i in range(N)])

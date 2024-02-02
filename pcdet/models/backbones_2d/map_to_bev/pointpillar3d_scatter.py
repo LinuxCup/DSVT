@@ -1,5 +1,8 @@
 import torch
 import torch.nn as nn
+import numpy as np
+import pdb
+from pcdet.models.dense_heads.detr_head import DETRHead
 
 
 class PointPillarScatter3d(nn.Module):
@@ -10,6 +13,10 @@ class PointPillarScatter3d(nn.Module):
         self.nx, self.ny, self.nz = self.model_cfg.INPUT_SHAPE
         self.num_bev_features = self.model_cfg.NUM_BEV_FEATURES
         self.num_bev_features_before_compression = self.model_cfg.NUM_BEV_FEATURES // self.nz
+        self.detr_head = self.model_cfg.get('DENSE_HEAD', None)
+        if self.detr_head:
+            self.detr_head = DETRHead(model_cfg.DENSE_HEAD, self.detr_head.HIDDEN_CHANNEL, self.detr_head.NUM_HEADS, self.detr_head.FFN_CHANNEL,
+                                 self.detr_head.DROPOUT, self.detr_head.ACTIVATION)
 
     def forward(self, batch_dict, **kwargs):
         pillar_features, coords = batch_dict['pillar_features'], batch_dict['voxel_coords']
@@ -35,4 +42,12 @@ class PointPillarScatter3d(nn.Module):
         batch_spatial_features = torch.stack(batch_spatial_features, 0)
         batch_spatial_features = batch_spatial_features.view(batch_size, self.num_bev_features_before_compression * self.nz, self.ny, self.nx)
         batch_dict['spatial_features'] = batch_spatial_features
+
+        if self.detr_head:
+            batch_dict = self.detr_head(batch_dict)
+            return batch_dict
+        # pdb.set_trace()
+        # feat_trt = torch.from_numpy(np.load('/home/zhenghu/DeepLearning/inference_framework/combine_inputs.npy').reshape(1,264,384,128)).permute(0,3,1,2).cuda()
+        # batch_dict['spatial_features'] = feat_trt
+
         return batch_dict

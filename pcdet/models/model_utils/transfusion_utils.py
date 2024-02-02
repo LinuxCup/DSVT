@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
+import pdb
 
 def clip_sigmoid(x, eps=1e-4):
     y = torch.clamp(x.sigmoid_(), min=eps, max=1 - eps)
@@ -78,12 +79,22 @@ class TransformerDecoderLayer(nn.Module):
         query = query.permute(2, 0, 1)
         key = key.permute(2, 0, 1)
 
+        # pdb.set_trace()
         if not self.cross_only:
             q = k = v = self.with_pos_embed(query, query_pos_embed)
             query2 = self.self_attn(q, k, value=v)[0]
             query = query + self.dropout1(query2)
             query = self.norm1(query)
         
+        # pdb.set_trace()
+        # (Pdb) self.with_pos_embed(query, query_pos_embed).shape
+        # torch.Size([1, 500, 128])
+        # (Pdb) self.with_pos_embed(key, key_pos_embed).shape
+        # torch.Size([441, 500, 128])
+        # (Pdb) self.with_pos_embed(key, key_pos_embed).shape
+        # torch.Size([441, 500, 128])
+        # (Pdb) key_padding_mask.shape
+        # torch.Size([500, 441])
         query2 = self.multihead_attn(query=self.with_pos_embed(query, query_pos_embed),
                                      key=self.with_pos_embed(key, key_pos_embed),
                                      value=self.with_pos_embed(key, key_pos_embed), 
