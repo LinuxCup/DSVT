@@ -29,8 +29,8 @@ class CenterPoint(Detector3DTemplate):
         #     t0 = time.time()
 
         if self.training:
-            # loss, tb_dict, disp_dict = self.get_training_loss()
-            loss, tb_dict, disp_dict = self.get_training_transhead_loss(batch_dict)
+            loss, tb_dict, disp_dict = self.get_training_loss()
+            # loss, tb_dict, disp_dict = self.get_training_transhead_loss(batch_dict)
 
             ret_dict = {
                 'loss': loss

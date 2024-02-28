@@ -117,9 +117,10 @@ class DETRHead(nn.Module):
         # )
         
         self.posembed=PositionEmbeddingLearned(2, 128)
+        self.dirembed=PositionEmbeddingLearned(2, 128)
 
-        # self.query_embed = nn.Embedding(800, 128)
-        self.query_embed = None
+        self.query_embed = nn.Embedding(800, 128)
+        # self.query_embed = None
         self.tgt = nn.Parameter(torch.rand(800, 128))
 
         self._reset_parameters()
@@ -143,13 +144,17 @@ class DETRHead(nn.Module):
         feature_abs_flatten_idx = torch.nonzero(feature_abs > 0.)
         feautre_flatten_val = feautre_flatten.index_select(dim = 2, index=feature_abs_flatten_idx.permute(1,0)[1,...])
 
-        top_proposals_x = feature_abs_flatten_idx.permute(1,0)[1,...] // x_grid # bs, num_proposals
+        top_proposals_x = feature_abs_flatten_idx.permute(1,0)[1,...] // y_grid # bs, num_proposals
         top_proposals_y = feature_abs_flatten_idx.permute(1,0)[1,...] % y_grid # bs, num_proposals
 
-        # pdb.set_trace()
+        top_proposals_x = (top_proposals_x - x_grid/2)
+        top_proposals_y = (top_proposals_y - y_grid/2)
+        dir_sin = torch.sin(torch.atan2(top_proposals_y,top_proposals_x))
+        dir_cos = torch.cos(torch.atan2(top_proposals_y,top_proposals_x))
+        dir_embed = self.dirembed(torch.cat([dir_sin.unsqueeze(1), dir_cos.unsqueeze(1)],dim=1).unsqueeze(0).float())
         pos_embed = self.posembed(torch.cat([top_proposals_x.unsqueeze(1), top_proposals_y.unsqueeze(1)],dim=1).unsqueeze(0).float())
-        
-        return feautre_flatten_val, pos_embed
+
+        return feautre_flatten_val, pos_embed + dir_embed
 
 
     def forward(self, batch_dict):
@@ -160,7 +165,8 @@ class DETRHead(nn.Module):
         res_layer = []
         for i in range(bs):
             feautre_flatten_val, feature_pos_embed = self.dense2sequence(feature[i,...].unsqueeze(0))
-            query_embed = None
+            # query_embed = None
+            query_embed = self.query_embed.weight.unsqueeze(1)
             tgt = self.tgt.unsqueeze(1)
             # tgt = torch.zeros_like(query_embed)
             # pdb.set_trace()
@@ -495,7 +501,7 @@ class DETRHead(nn.Module):
         batch_dim = preds_dicts["dim"]
         batch_rot = preds_dicts["rot"]
         batch_vel = None
-        pdb.set_trace()
+        # pdb.set_trace()
         # visualization_feature(preds_dicts['dense_heatmap'][0].permute(0,2,1).sigmoid().squeeze(dim=0).cpu())
         if "vel" in preds_dicts:
             batch_vel = preds_dicts["vel"]
@@ -550,7 +556,9 @@ class DETRHead(nn.Module):
                     top_scores = scores[task_mask]
                     boxes_for_nms = boxes3d[task_mask][:, :7].clone().detach()
                     task_nms_config = copy.deepcopy(self.model_cfg.NMS_CONFIG)
-                    task_nms_config.NMS_THRESH = [task["radius"], 0.]
+                    task_nms_config.NMS_THRESH = task["radius"]
+                    task_nms_config.NMS_PRE_MAXSIZE = task_nms_config.NMS_PRE_MAXSIZE[0]
+                    task_nms_config.NMS_POST_MAXSIZE = task_nms_config.NMS_POST_MAXSIZE[0]
                     task_keep_indices, _ = model_nms_utils.class_agnostic_nms(
                             box_scores=top_scores, box_preds=boxes_for_nms,
                             nms_config=task_nms_config, score_thresh=task_nms_config.SCORE_THRES)
@@ -577,7 +585,7 @@ class DSVT_Encoder(nn.Module):
                  activation="relu", batch_first=True, mlp_dropout=0):
         super().__init__()
         self.norm = nn.LayerNorm(d_model)
-        self.num_layers = 1
+        self.num_layers = 3
         self.return_intermediate = False
     
         decoder_layer = TransformerDecoderLayer(d_model, nhead, dim_feedforward, dropout, activation)
